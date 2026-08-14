@@ -87,6 +87,7 @@ Build, compare, validate, and deploy reproducible machine-learning models for re
 
 ## MLflow and Model Artifacts
 
+- Feel free to get access to parquet file(Read-only) access
 - Record parameters, metrics, tags, dataset versions, feature versions, and artifacts in MLflow.
 - Send experiment metadata through the approved `mlflow-api-srv` endpoint API running on local.
 - Never bypass `mlflow-api-srv` unless explicitly approved.
