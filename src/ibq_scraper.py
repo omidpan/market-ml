@@ -173,6 +173,10 @@ def require_env_path(name: str) -> Path:
 DATA_PATH = require_env_path("DATA_PATH")
 CONFIG_PATH = require_env_path("CONFIG_PATH")
 
+# Daily per-minute raw files are stored under IBG_RAW_PATH (a separate,
+# larger/backend data volume). Combined snapshots stay under DATA_PATH.
+IBG_RAW_PATH = require_env_path("IBG_RAW_PATH")
+
 # REPORTS_PATH is not currently used by the scraper, but keeping it available
 # makes the scraper and downstream pipeline share the same .env contract.
 REPORTS_PATH = Path(
@@ -475,22 +479,23 @@ def resolve_data_path(
     value: str | Path | None,
     *,
     default_relative: str,
+    base: Path = DATA_PATH,
 ) -> Path:
     """
-    Resolve a data-output path under DATA_PATH from .env.
+    Resolve a data-output path under `base` (defaults to DATA_PATH) from .env.
 
     Compatibility:
       output_root: data/raw/ibkr
     and:
       output_root: raw/ibkr
     both resolve to:
-      $DATA_PATH/raw/ibkr
+      $base/raw/ibkr
 
     Absolute values remain supported as explicit overrides.
     """
     if value is None:
         return (
-            DATA_PATH
+            base
             / default_relative
         ).resolve()
 
@@ -501,17 +506,17 @@ def resolve_data_path(
 
     parts = list(path.parts)
 
-    # DATA_PATH already represents the project's data directory. Avoid:
-    #     $DATA_PATH/data/raw/...
+    # `base` already represents a data directory. Avoid:
+    #     $base/data/raw/...
     # for legacy config values such as "data/raw/ibkr".
     if parts and parts[0].lower() == "data":
         parts = parts[1:]
 
     if not parts:
-        return DATA_PATH.resolve()
+        return base.resolve()
 
     return (
-        DATA_PATH.joinpath(*parts)
+        base.joinpath(*parts)
     ).resolve()
 
 
@@ -657,6 +662,7 @@ def load_jobs(config_path: Path) -> RuntimeConfig:
     output_root = resolve_data_path(
         config.get("output_root"),
         default_relative="raw/ibkr",
+        base=IBG_RAW_PATH,
     )
 
     snapshot_root = resolve_data_path(
@@ -1991,6 +1997,7 @@ def runtime_from_args(args: argparse.Namespace) -> RuntimeConfig:
             output_root = resolve_data_path(
                 args.output_root,
                 default_relative="raw/ibkr",
+                base=IBG_RAW_PATH,
             )
 
             runtime = RuntimeConfig(
@@ -2038,6 +2045,7 @@ def runtime_from_args(args: argparse.Namespace) -> RuntimeConfig:
     output_root = resolve_data_path(
         args.output_root,
         default_relative="raw/ibkr",
+        base=IBG_RAW_PATH,
     )
 
     snapshot_root = resolve_data_path(
