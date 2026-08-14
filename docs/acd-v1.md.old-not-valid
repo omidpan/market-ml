@@ -21,7 +21,7 @@ The LSTM can then learn how these states interact with OHLCV, volatility, EMA, B
 ---
 
 # 2. Opening Range Definition
-
+## 
 Use the first 10 minutes of the regular session as the Opening Range (OR).
 
 For each trading day:

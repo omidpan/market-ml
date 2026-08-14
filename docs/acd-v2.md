@@ -22,21 +22,32 @@ The resulting state features can be combined with price action, volatility, EMA,
 
 2. Opening Range Definition
 
-The opening range is calculated from the first 10 regular-session 1-minute bars.
+The opening-range state machine operates only during U.S. equity regular trading hours (RTH), 9:30 a.m. through 4:00 p.m. Eastern Time. Pre-market and after-hours bars must not initialize, update, or trigger it. Use the applicable exchange calendar for holidays and early closes.
+
+A normal RTH session contains 390 one-minute intervals. The opening range uses a configurable window at the beginning of the session and is retained in per-stock memory for that trading day. The initial candidate is 10 minutes: bars timestamped 9:30 through 9:39 a.m., inclusive. The state machine remains in warm-up during this window and emits no ACD signals. The range is finalized after the 9:39 bar closes, and signal processing begins with the 9:40 bar, leaving 380 minutes in a normal session.
 
 ```text
-OR_HIGH = highest high of first 10 minutes
-OR_LOW  = lowest low of first 10 minutes
+RTH_START         = 09:30 America/New_York
+RTH_END           = 16:00 America/New_York
+OR_WINDOW_MINUTES = configurable; initial candidate = 10
+
+OR_HIGH = highest high during the opening-range window
+OR_LOW  = lowest low during the opening-range window
 OR_WIDTH = OR_HIGH - OR_LOW
 ```
 
-Daily ATR is used to normalize the A/C levels.
+The best opening-range duration remains a research question. Candidate windows must be evaluated historically, so the duration must not be hard-coded.
+
+Daily ATR normalizes the A/C levels. The A- and C-band percentages are configurable working hypotheses; initial candidates based on experience are 5% and 10% of daily ATR.
 
 ```text
-A_UP   = OR_HIGH + 0.05 × Daily_ATR
-A_DOWN = OR_LOW  - 0.05 × Daily_ATR
-C_UP   = OR_HIGH + 0.10 × Daily_ATR
-C_DOWN = OR_LOW  - 0.10 × Daily_ATR
+A_ATR_PERCENT = configurable; initial candidate = 0.05
+C_ATR_PERCENT = configurable; initial candidate = 0.10
+
+A_UP   = OR_HIGH + A_ATR_PERCENT × Daily_ATR
+A_DOWN = OR_LOW  - A_ATR_PERCENT × Daily_ATR
+C_UP   = OR_HIGH + C_ATR_PERCENT × Daily_ATR
+C_DOWN = OR_LOW  - C_ATR_PERCENT × Daily_ATR
 ```
 
 Conceptually:
@@ -57,7 +68,18 @@ Conceptually:
                     C_DOWN
 ```
 
-The exact percentages should remain configurable so they can be tested historically.
+Per-stock session memory must include the session date/timezone, opening-range window and boundaries, OR high/low/width, daily ATR, A/C percentages and levels, and an `opening_range_finalized` flag. Reset these values at each new regular session. Once finalized, the range and derived levels remain fixed for the session; later bars must not redraw them.
+
+### Critical Causality and Data-Leakage Requirement
+
+For a bar at time `t`, every feature, state, transition, and signal must use only information available at or before `t`. Past ACD states may inform future states, but a future confirmation, reversal, failure, or outcome must never clarify, relabel, invalidate, strengthen, or rewrite an earlier state or signal.
+
+```text
+Allowed:     data/state at or before t  ---> state or signal after t
+Prohibited:  data/signal after t        ---> feature, state, or signal at t
+```
+
+If a breakout requires three completed confirmation bars, earlier bars remain `BREAKOUT_PENDING`; `BREAKOUT_CONFIRMED` begins only when the confirming bar closes. Future return, MFE, MAE, and eventual success or failure are labels/evaluation outcomes only. Historical features must be generated with the same forward-only bar-by-bar path used in live inference.
 
 
 
@@ -728,34 +750,92 @@ This distinction prevents target leakage.
 
 
 
-21. ACD Penalty Score
+21. Point-in-Time ACD Context Scores
 
-A live feature can represent the current historical/recent reliability of the ACD state, provided it is calculated only from information available up to the current bar.
+Recent ACD history can provide useful context for the current bar. This context should be exposed to the model as a small group of interpretable features rather than compressed into one opaque score. In particular, directional persistence and signal reliability must remain separate: a market can have a strong bullish direction but temporarily unreliable ACD signals, or it can have no persistent direction while one specific signal type remains reliable.
+
+### 21.1 Directional Context
+
+Create a signed daily ACD direction value from resolved signals and the final valid regime of each completed session. A practical initial scale is:
+
+```text
++2 = confirmed C_UP bullish session
++1 = valid A_UP bullish session
+ 0 = neutral, mixed, or unresolved session
+-1 = valid A_DOWN bearish session
+-2 = confirmed C_DOWN bearish session
+```
+
+Reversal events should be scored by the direction of the resulting position or move, not merely by the level that was touched. For example, a confirmed rejection of an upper A/C level that produces a bearish reversal contributes negative direction; a confirmed rejection of a lower A/C level that produces a bullish reversal contributes positive direction.
+
+Compute causal rolling directional features such as:
+
+```text
+ACD_DIRECTION_3D
+ACD_DIRECTION_5D
+ACD_DIRECTION_EWMA
+ACD_SAME_DIRECTION_STREAK
+```
+
+For example, three consecutive completed sessions with valid A_UP/C_UP bullish states should produce a positive direction score and a bullish streak of three. The inverse applies to consecutive A_DOWN/C_DOWN bearish sessions. Window lengths and decay factors must remain configurable and should be validated historically.
+
+### 21.2 Signal Reliability
+
+Reliability measures whether prior ACD signals worked, independent of their direction. It should be calculated both overall and, where sample size permits, by signal type:
+
+```text
+ACD_RELIABILITY_10D
+ACD_RELIABILITY_20D
+A_UP_RELIABILITY
+C_UP_RELIABILITY
+A_DOWN_RELIABILITY
+C_DOWN_RELIABILITY
+REVERSAL_RELIABILITY
+ACD_RESOLVED_SIGNAL_COUNT
+```
 
 Example:
 
 ```text
-ACD_RELIABILITY_SCORE
-```
-
-It could be based on previous signals of the same type.
-
-For example:
-
-```text
-Last 20 A_UP breakouts:
+Last 20 resolved A_UP signals:
 14 successful
 6 failed
-historical success rate = 70%
+A_UP_RELIABILITY = 0.70
 ```
 
-Then:
+The resolved-signal count must accompany each reliability estimate so the model can distinguish a meaningful rate from a small-sample estimate. A smoothed estimate, such as a Beta-Binomial posterior mean, is preferable to a raw success rate when few observations exist. The smoothing parameters should be fitted using training data only.
+
+### 21.3 Whipsaw / Choppy-Market Context
+
+A market with many recent failed and alternating ACD signals is better described as a choppy or whipsaw regime rather than bullish or bearish. Create separate causal features such as:
 
 ```text
-A_UP_BREAKOUT_RELIABILITY = 0.70
+ACD_FAILURE_RATE_10D
+ACD_FAILURE_RATE_20D
+ACD_SIGNAL_DENSITY_10D
+ACD_DIRECTION_FLIP_RATE_10D
+ACD_WHIPSAW_SCORE
 ```
 
-This should be calculated with a rolling historical window and strictly causal data.
+`ACD_WHIPSAW_SCORE` may combine failure rate, signal density, and direction-flip rate, but its components should also be supplied separately. A high value means recent ACD signals have been unstable and the probability of another failure may be elevated; it is context, not a deterministic instruction to ignore the next signal.
+
+### 21.4 Current-Day Context
+
+The current-day context may update after each signal becomes observable:
+
+```text
+ACD_TODAY_DIRECTION_SCORE
+ACD_TODAY_RESOLVED_SUCCESS_COUNT
+ACD_TODAY_RESOLVED_FAILURE_COUNT
+ACD_TODAY_DIRECTION_FLIP_COUNT
+ACD_TODAY_WHIPSAW_SCORE
+```
+
+Pending signals must remain pending and must not contribute a success or failure until their outcome definition has been satisfied using completed bars. At the start of a new session, current-day counters reset, while rolling multi-day context uses only prior completed sessions. During the session, only information available through the current completed bar may update these features.
+
+### 21.5 Modeling Recommendation
+
+Include these engineered context features as candidate inputs and let the model learn their usefulness. Also run ablation experiments comparing: (1) no ACD context, (2) separate direction/reliability/whipsaw features, and (3) any composite score. Retain a feature only if it improves out-of-sample performance and stability across walk-forward periods. All rolling calculations, signal resolution, smoothing, and parameter selection must remain strictly causal and comply with the no-look-ahead requirements in Section 23.
 
 
 
@@ -784,15 +864,28 @@ A practical first version:
 18. ACD_SIGNAL_COUNT_TODAY
 19. A_UP_COUNT_TODAY
 20. A_DOWN_COUNT_TODAY
-21. PREVIOUS_SIGNAL_OUTCOME
+21. PREVIOUS_RESOLVED_SIGNAL_OUTCOME
 22. ACD_RELIABILITY_SCORE
+23. ACD_DIRECTION_3D
+24. ACD_DIRECTION_5D
+25. ACD_SAME_DIRECTION_STREAK
+26. ACD_FAILURE_RATE_10D
+27. ACD_FAILURE_RATE_20D
+28. ACD_DIRECTION_FLIP_RATE_10D
+29. ACD_WHIPSAW_SCORE
+30. ACD_RESOLVED_SIGNAL_COUNT
+31. ACD_TODAY_DIRECTION_SCORE
+32. ACD_TODAY_RESOLVED_FAILURE_COUNT
+33. ACD_TODAY_DIRECTION_FLIP_COUNT
 ```
 
 Additional features can be added later.
 
 
 
-23. Important: Do Not Feed Future Outcome Into the LSTM
+23. Critical: Enforce Causality and Prevent Data Leakage
+
+Past information may influence future states, but future information may never influence or revise a past state. This applies to live inference, offline features, training, validation, backtesting, and reporting.
 
 The following are useful for training/evaluation:
 
@@ -804,7 +897,7 @@ future_MFE
 future_MAE
 ```
 
-But they cannot be ordinary input features if they depend on future prices.
+They cannot be ordinary input features if they depend on future prices. Store them separately and join them only as labels or evaluation fields.
 
 Instead:
 
@@ -829,6 +922,8 @@ Current feature vector
         v
 LSTM
 ```
+
+A later confirmation, rejection, failure, or realized outcome can create a new state when it becomes observable, but it cannot backfill an earlier row. Validation must confirm that truncating the dataset after time `t`, or changing any prices after `t`, leaves every feature, state, and signal through `t` unchanged. Offline replay must also reproduce the live bar-by-bar state sequence exactly.
 
 
 
