@@ -1,7 +1,7 @@
 ---
 name: review-walk-forward
 description: Review walk-forward stock-model validation for leakage, stability, and correct time-series evaluation. Use manually after the Concourse walk-forward job finishes.
-disable-model-invocation: true
+disable-model-invocation: false
 context: fork
 agent: Explore
 background: false

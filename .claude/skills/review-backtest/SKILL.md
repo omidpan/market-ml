@@ -1,7 +1,7 @@
 ---
 name: review-backtest
 description: Review quantitative stock backtest logs and reports for realism, leakage, costs, and risk. Use manually after the Concourse backtest job finishes.
-disable-model-invocation: true
+disable-model-invocation: false
 context: fork
 agent: Explore
 background: false

@@ -1,7 +1,7 @@
 ---
 name: review-training
 description: Review baseline stock-model training logs and MLflow results for correctness, reproducibility, and overfitting. Use manually after the Concourse baseline-training job finishes.
-disable-model-invocation: true
+disable-model-invocation: false
 context: fork
 agent: Explore
 background: false

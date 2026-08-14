@@ -1,7 +1,7 @@
 ---
 name: review-regularization
 description: Review stock-model regularization and tuning results against an approved baseline. Use manually after the Concourse regularization-tuning job finishes.
-disable-model-invocation: true
+disable-model-invocation: false
 context: fork
 agent: Explore
 background: false

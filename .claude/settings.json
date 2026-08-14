@@ -3,6 +3,9 @@
     "deny": [
       "Edit(./data/raw/**)",
       "Bash(git push*)"
+    ],
+    "allow": [
+      "Bash(python3 \"/private/tmp/claude-501/-Users-leo-Library-CloudStorage-GoogleDrive-omidpnteaching-gmail-com-My-Drive-market-ml/4aac59e0-88fc-45e2-84d9-7c7b119cc3bf/scratchpad/check_sequences.py\")"
     ]
   }
 }

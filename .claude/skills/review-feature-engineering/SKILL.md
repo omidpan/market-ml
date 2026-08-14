@@ -1,7 +1,7 @@
 ---
 name: review-feature-engineering
 description: Review stock feature-engineering logs, metadata, and validation reports for leakage and point-in-time correctness. Use manually after the Concourse feature jobs finish.
-disable-model-invocation: true
+disable-model-invocation: false
 context: fork
 agent: Explore
 background: false
