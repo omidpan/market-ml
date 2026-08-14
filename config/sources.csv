@@ -1,0 +1,4 @@
+source_id,symbol,frequency,timezone,coverage_start,coverage_end,coverage_sessions,enabled
+primary_extended,AMAT,1min,America/New_York,2019-12-02 08:00:00,,premarket|regular|aftermarket,true
+primary_extended,NVDA,1min,America/New_York,2019-12-02 04:00:00,,premarket|regular|aftermarket,true
+primary_extended,AVGO,1min,America/New_York,2025-08-08 04:00:00,,premarket|regular|aftermarket,true

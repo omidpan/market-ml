@@ -1,0 +1,43 @@
+//@version=6
+indicator("RSI/MACD/ATR",timeframe = "", overlay=false,timeframe_gaps=true)
+
+group0="toggle view"
+group1="RSI settings"
+group2="macd settings"
+group3="ATR settings"
+// === Toggle: Select which to display ===
+mode = input.string("RSI", title="Select Indicator", options=["RSI", "MACD","ATR"],group = group0)
+//*********************RSI *************************************************************************
+rsiSource = input.source(close, "RSI Source",group = group1)
+rsiLength = input.int(14, "RSI Length",group = group1)
+rsi = ta.rsi(rsiSource, rsiLength)
+
+// === Plot RSI (if selected) ===
+plot(mode == "RSI" ? rsi : na, title="RSI", color=color.purple, linewidth=2,display = display.all)
+hline(mode == "RSI" ? 70 : na, "Overbought", color=color.gray)
+hline(mode == "RSI" ? 30 : na, "Oversold", color=color.gray)
+
+//************************** MACD *******************************************************************
+// === MACD Inputs ===
+fastLength = input.int(12, "MACD Fast Length",group = group2)
+slowLength = input.int(26, "MACD Slow Length",group = group2)
+signalSmoothing = input.int(9, "Signal Smoothing",group = group2)
+maType = input.string("EMA", title="MA Type for MACD", options=["EMA", "SMA"],group = group2)
+
+// calculation
+fastMA = maType == "EMA" ? ta.ema(close, fastLength) : ta.sma(close, fastLength)
+slowMA = maType == "EMA" ? ta.ema(close, slowLength) : ta.sma(close, slowLength)
+macdLine = fastMA - slowMA
+signalLine = maType == "EMA" ? ta.ema(macdLine, signalSmoothing) : ta.sma(macdLine, signalSmoothing)
+histLine = macdLine - signalLine
+// === MACD Plot ===
+plot( mode=="MACD" ? macdLine : na, title="MACD Line", color=color.blue, linewidth=1,display = display.pane)
+plot(mode=="MACD" ? signalLine : na, title="Signal Line", color=color.orange, linewidth=1,display = display.pane)
+plot(mode=="MACD" ? histLine:na, title = "Histogram", style = plot.style_columns, color = (histLine >= 0 ? (histLine[1] < histLine ? #26A69A : #B2DFDB) : (histLine[1] < histLine ? #FFCDD2 : #FF5252)),display = display.pane)
+hline(mode=="MACD" ? 0:na, "Zero Line", color=color.gray)
+
+//************************************* ATR
+atrLength = input.int(14, title="ATR Length", inline="atr",group=group3)
+atr = ta.atr(atrLength)
+// === Plot ATR ===
+plot(mode == "ATR" ? atr : na, title="ATR", color=color.teal, linewidth=2,display = display.all)

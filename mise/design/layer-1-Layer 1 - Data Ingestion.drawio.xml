@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="Layer 1 - Data Ingestion" id="CG-b-NICblQTdEvbVCir">
+    <mxGraphModel dx="2042" dy="1135" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-1" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Layer 1 - Data Ingestion" vertex="1">
+          <mxGeometry height="1150" width="1730" x="20" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-2" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" value="IBKR Gateway" vertex="1">
+          <mxGeometry height="60" width="180" x="40" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-3" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;" value="IBKR API" vertex="1">
+          <mxGeometry height="60" width="180" x="300" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-4" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;" value="Connection Manager" vertex="1">
+          <mxGeometry height="60" width="220" x="510" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-5" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" value="Reconnection Manager" vertex="1">
+          <mxGeometry height="60" width="200" x="60" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-6" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" value="Heartbeat Monitor" vertex="1">
+          <mxGeometry height="60" width="200" x="320" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-7" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" value="Rate Limiter" vertex="1">
+          <mxGeometry height="60" width="200" x="760" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-8" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;" value="Market Hours Checker" vertex="1">
+          <mxGeometry height="60" width="220" x="1130" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-9" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;fontStyle=1;" value="Data Collector Service" vertex="1">
+          <mxGeometry height="70" width="300" x="400" y="360" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-10" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;" value="Duplicate Candle Filter" vertex="1">
+          <mxGeometry height="60" width="220" x="120" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-11" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;" value="Missing Candle Recovery" vertex="1">
+          <mxGeometry height="60" width="220" x="420" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-12" parent="LxzmsIRcydNMH1Y39NUl-1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;" value="Real-time Stream" vertex="1">
+          <mxGeometry height="60" width="220" x="720" y="520" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-13" parent="LxzmsIRcydNMH1Y39NUl-1" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;" value="Redis Streams / Kafka" vertex="1">
+          <mxGeometry height="80" width="240" x="440" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-14" parent="LxzmsIRcydNMH1Y39NUl-1" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#dae8fc;" value="TimescaleDB Writer" vertex="1">
+          <mxGeometry height="80" width="240" x="440" y="810" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-15" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-2" target="LxzmsIRcydNMH1Y39NUl-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-16" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-3" target="LxzmsIRcydNMH1Y39NUl-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-17" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-4" target="LxzmsIRcydNMH1Y39NUl-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-18" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-5" target="LxzmsIRcydNMH1Y39NUl-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-19" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-6" target="LxzmsIRcydNMH1Y39NUl-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-20" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-7" target="LxzmsIRcydNMH1Y39NUl-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-21" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-8" target="LxzmsIRcydNMH1Y39NUl-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-22" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-9" target="LxzmsIRcydNMH1Y39NUl-10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-23" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-10" target="LxzmsIRcydNMH1Y39NUl-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-24" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-11" target="LxzmsIRcydNMH1Y39NUl-12">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-25" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-12" target="LxzmsIRcydNMH1Y39NUl-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="LxzmsIRcydNMH1Y39NUl-26" edge="1" parent="LxzmsIRcydNMH1Y39NUl-1" source="LxzmsIRcydNMH1Y39NUl-13" target="LxzmsIRcydNMH1Y39NUl-14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

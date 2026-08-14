@@ -1,0 +1,30 @@
+# IBKR scraper - Software Infrastructure
+
+max_workers: 5
+output_root: data/raw/ibkr
+snapshot_root: data/raw/bootstrap
+auto_snapshot: true
+
+request_pause_seconds: 2.0
+timeout_seconds: 120
+
+defaults:
+  start_date: "2019-12-01"
+  end_date: "2026-08-09"
+  duration: "5 Y"
+  bar_size: "1 min"
+  sessions:
+    - extended
+  what_to_show: TRADES
+  currency: USD
+  calendar: XNYS
+
+
+groups:
+  software_infrastructure:
+    symbols:
+      - msft
+      - pltr
+    context_symbols:
+      - spy
+      - qqq

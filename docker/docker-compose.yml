@@ -1,0 +1,114 @@
+services:
+# =========================================================================
+  # 1. DATA STREAMING LAYER (Zookeeperless Kafka / KRaft Mode)
+  # =========================================================================
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    profiles: ["dev","test"] 
+    ports:
+      - "9092:9092"
+    environment:
+      # Configure Kafka to run without Zookeeper (KRaft mode)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:9093'
+      
+      # Define how clients connect (inside docker vs from your local machine)
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:9092'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT'
+      
+      # Basic configurations
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      LOG4J_LOGGER_ORG_APACHE_KAFKA: 'INFO'
+      
+      # Tell Kafka to store logs/partitions in the standard data directory
+      KAFKA_LOG_DIRS: '/var/lib/kafka/data'
+    volumes:
+      # Map the internal Kafka data directory to a permanent Docker volume
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - trading_pipeline_network
+
+  # =========================================================================
+  # 2. EXPERIMENT TRACKING LAYER (MLflow Setup)
+  # =========================================================================
+  
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v2.14.1
+    container_name: mlflow
+    restart: unless-stopped
+
+    ports:
+      - "${MLFLOW_HOST_PORT}:${MLFLOW_INTERNAL_PORT}"
+
+    volumes:
+      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - "sqlite:///${MLFLOW_DATABASE_PATH}"
+      - --serve-artifacts
+      - --artifacts-destination
+      - "${MLFLOW_ARTIFACTS_PATH}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${MLFLOW_INTERNAL_PORT}"
+
+    networks:
+      - mlflow-network
+
+
+  mlflow-api-srv:
+    # build:
+    #   context: ./mlflow-tracker
+    #   dockerfile: Dockerfile
+    image: trading_ai-mlflow-api-srv:latest
+    container_name: mlflow-api-srv
+    restart: unless-stopped
+
+    ports:
+      - "${TRACKER_HOST_PORT}:${TRACKER_INTERNAL_PORT}"
+
+    environment:
+      MLFLOW_TRACKING_URI: "http://mlflow-server:${MLFLOW_INTERNAL_PORT}"
+      MODELS_DIRECTORY: "${MODELS_CONTAINER_PATH}"
+      MODEL_SUBDIRECTORY: "${MODEL_SUBDIRECTORY}"
+      GIT_PYTHON_REFRESH: quiet
+
+    volumes:
+      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+
+    depends_on:
+      - mlflow-server
+
+    command:
+      - uvicorn
+      - mlflow_stock_tracker:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${TRACKER_INTERNAL_PORT}"
+
+    networks:
+      - mlflow-network
+
+# =========================================================================
+# NETWORKS & VOLUMES INTERFACES
+# =========================================================================
+volumes:
+  kafka_data:
+networks:
+  mlflow-network:
+    name: mlflow-network
+    driver: bridge
+  trading_pipeline_network:
+    name: trading_pipeline_network
+    driver: bridge

@@ -1,0 +1,573 @@
+<?xml version="1.0" ?>
+<mxfile host="app.diagrams.net">
+  <diagram name="Complete 8-Layer Trading System Architecture" id="Trading-System-Architecture">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="5000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="L1_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Layer 1 – Data Ingestion" vertex="1">
+          <mxGeometry x="20" y="20" width="1760" height="620" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_IBKR_G" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="IBKR Gateway" vertex="1">
+          <mxGeometry x="40" y="60" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_IBKR_API" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="IBKR API" vertex="1">
+          <mxGeometry x="280" y="60" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_ConnMgr" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Connection Manager" vertex="1">
+          <mxGeometry x="520" y="60" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_Reconn" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Reconnection Manager" vertex="1">
+          <mxGeometry x="40" y="180" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_Heartbeat" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Heartbeat Monitor" vertex="1">
+          <mxGeometry x="250" y="180" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_RateLim" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Rate Limiter" vertex="1">
+          <mxGeometry x="460" y="180" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_MktHours" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Market Hours Checker" vertex="1">
+          <mxGeometry x="670" y="180" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_DataCollector" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Data Collector Service
+(Historical &amp; Real-time)" vertex="1">
+          <mxGeometry x="340" y="300" width="280" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_DupFilter" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Duplicate Candle Filter" vertex="1">
+          <mxGeometry x="100" y="420" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_MissRecovery" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Missing Candle Recovery" vertex="1">
+          <mxGeometry x="380" y="420" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_RTStream" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Real-time Data Stream" vertex="1">
+          <mxGeometry x="660" y="420" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_RedisKafka" parent="L1_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Redis Streams / Kafka Queue" vertex="1">
+          <mxGeometry x="1000" y="270" width="240" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1_TSWriter" parent="L1_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="TimescaleDB Ingestion Writer" vertex="1">
+          <mxGeometry x="1320" y="280" width="220" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_1" parent="L1_Container" source="L1_IBKR_G" target="L1_IBKR_API" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_2" parent="L1_Container" source="L1_IBKR_API" target="L1_ConnMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_3" parent="L1_Container" source="L1_ConnMgr" target="L1_DataCollector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_4" parent="L1_Container" source="L1_Reconn" target="L1_DataCollector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_5" parent="L1_Container" source="L1_Heartbeat" target="L1_DataCollector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_6" parent="L1_Container" source="L1_RateLim" target="L1_DataCollector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_7" parent="L1_Container" source="L1_MktHours" target="L1_DataCollector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_8" parent="L1_Container" source="L1_DataCollector" target="L1_DupFilter" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_9" parent="L1_Container" source="L1_DupFilter" target="L1_MissRecovery" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_10" parent="L1_Container" source="L1_MissRecovery" target="L1_RTStream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_11" parent="L1_Container" source="L1_RTStream" target="L1_RedisKafka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_12" parent="L1_Container" source="L1_RedisKafka" target="L1_TSWriter" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#d5e8d4;strokeColor=#82b366;" value="Layer 2 – Data Storage" vertex="1">
+          <mxGeometry x="20" y="670" width="1760" height="450" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_TSDB" parent="L2_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="TimescaleDB
+(Primary Time-Series DB)" vertex="1">
+          <mxGeometry x="70" y="160" width="220" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_T1" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="candles_1m" vertex="1">
+          <mxGeometry x="380" y="60" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_T2" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="indicators" vertex="1">
+          <mxGeometry x="380" y="130" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_T3" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="signals" vertex="1">
+          <mxGeometry x="380" y="200" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_T4" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="trades" vertex="1">
+          <mxGeometry x="380" y="270" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_T5" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="market_metadata" vertex="1">
+          <mxGeometry x="380" y="340" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_Partition" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Automated Partitioning
+(Time-bucket Chunking)" vertex="1">
+          <mxGeometry x="640" y="100" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_Compress" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Columnar Compression
+(90%+ Storage Reduction)" vertex="1">
+          <mxGeometry x="640" y="190" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_Aggregates" parent="L2_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Continuous Aggregates
+(5m, 15m, 1h, 1d Rollups)" vertex="1">
+          <mxGeometry x="640" y="280" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_Historical" parent="L2_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Historical Data Archive" vertex="1">
+          <mxGeometry x="960" y="110" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2_RealtimeDB" parent="L2_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Real-time Hot Cache" vertex="1">
+          <mxGeometry x="960" y="250" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L1_to_L2" parent="1" source="L1_TSWriter" target="L2_TSDB" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_1" parent="L2_Container" source="L2_TSDB" target="L2_T1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_2" parent="L2_Container" source="L2_TSDB" target="L2_T2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_3" parent="L2_Container" source="L2_TSDB" target="L2_T3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_4" parent="L2_Container" source="L2_TSDB" target="L2_T4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_5" parent="L2_Container" source="L2_TSDB" target="L2_T5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_6" parent="L2_Container" source="L2_T1" target="L2_Partition" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_7" parent="L2_Container" source="L2_Partition" target="L2_Compress" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_8" parent="L2_Container" source="L2_Compress" target="L2_Aggregates" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#fff2cc;strokeColor=#d6b656;" value="Layer 3 – Feature Engineering" vertex="1">
+          <mxGeometry x="20" y="1150" width="1760" height="480" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_TechBox" parent="L3_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Technical Indicators Subsystem" vertex="1">
+          <mxGeometry x="50" y="60" width="520" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_EMA" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="EMA / SMA" vertex="1">
+          <mxGeometry x="20" y="40" width="140" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_RSI" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="RSI / Stoch" vertex="1">
+          <mxGeometry x="180" y="40" width="140" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_ATR" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="ATR / Volatility" vertex="1">
+          <mxGeometry x="340" y="40" width="150" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_MACD" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="MACD Signal" vertex="1">
+          <mxGeometry x="20" y="110" width="140" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_VWAP" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="VWAP Line" vertex="1">
+          <mxGeometry x="180" y="110" width="140" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_BB" parent="L3_TechBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Bollinger Bands" vertex="1">
+          <mxGeometry x="340" y="110" width="150" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_MktBox" parent="L3_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Market Dynamics &amp; Breadth" vertex="1">
+          <mxGeometry x="620" y="60" width="480" height="370" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_VolSpike" parent="L3_MktBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Volume Spike Detector" vertex="1">
+          <mxGeometry x="30" y="50" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_RelStr" parent="L3_MktBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Relative Strength (RS)" vertex="1">
+          <mxGeometry x="250" y="50" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_SecStr" parent="L3_MktBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="Sector Strength Index" vertex="1">
+          <mxGeometry x="30" y="130" width="190" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_VIX" parent="L3_MktBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=0;" value="VIX / Regime Filter" vertex="1">
+          <mxGeometry x="250" y="130" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3_FeatureStore" parent="L3_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Feature Store
+(Feast / Redis / Online Cache)" vertex="1">
+          <mxGeometry x="1200" y="170" width="260" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L2_to_L3" parent="1" source="L2_TSDB" target="L3_TechBox" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L3_1" parent="L3_Container" source="L3_TechBox" target="L3_FeatureStore" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L3_2" parent="L3_Container" source="L3_MktBox" target="L3_FeatureStore" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Layer 4 – Machine Learning" vertex="1">
+          <mxGeometry x="20" y="1660" width="1760" height="520" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_TrainPipeline" parent="L4_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Offline Training Pipeline" vertex="1">
+          <mxGeometry x="50" y="60" width="420" height="380" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_FeatSelect" parent="L4_TrainPipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=0;" value="Feature Selection &amp; Scaling" vertex="1">
+          <mxGeometry x="30" y="40" width="360" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_Split" parent="L4_TrainPipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=0;" value="Train / Val / Test Split
+(Purged Group Time Series)" vertex="1">
+          <mxGeometry x="30" y="110" width="360" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_ModelBox" parent="L4_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Model Ensemble Suite" vertex="1">
+          <mxGeometry x="520" y="60" width="440" height="380" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_XGB" parent="L4_ModelBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="XGBoost Classifier" vertex="1">
+          <mxGeometry x="30" y="40" width="180" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_LGBM" parent="L4_ModelBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="LightGBM Model" vertex="1">
+          <mxGeometry x="230" y="40" width="180" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_RF" parent="L4_ModelBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Random Forest" vertex="1">
+          <mxGeometry x="30" y="110" width="180" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_LSTM" parent="L4_ModelBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="LSTM / Transformer" vertex="1">
+          <mxGeometry x="230" y="110" width="180" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_MLflow" parent="L4_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Model Registry
+(MLflow / Weights &amp; Biases)" vertex="1">
+          <mxGeometry x="1020" y="100" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_PredService" parent="L4_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Real-time Prediction Service" vertex="1">
+          <mxGeometry x="1300" y="100" width="240" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4_ConfScore" parent="L4_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="Confidence Score Calculation
+(Probability Calibration)" vertex="1">
+          <mxGeometry x="1300" y="240" width="240" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L3_to_L4" parent="1" source="L3_FeatureStore" target="L4_TrainPipeline" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L4_1" parent="L4_Container" source="L4_TrainPipeline" target="L4_ModelBox" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L4_2" parent="L4_Container" source="L4_ModelBox" target="L4_MLflow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L4_3" parent="L4_Container" source="L4_MLflow" target="L4_PredService" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L4_4" parent="L4_Container" source="L4_PredService" target="L4_ConfScore" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Layer 5 – Signal Generation" vertex="1">
+          <mxGeometry x="20" y="2210" width="1760" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_TechEngine" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Technical Rules Engine" vertex="1">
+          <mxGeometry x="60" y="70" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_StratEngine" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Strategy Engine
+(Rule &amp; ML Synthesis)" vertex="1">
+          <mxGeometry x="340" y="100" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_SigVal" parent="L5_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Signal Validator
+&amp; Thresholds?" vertex="1">
+          <mxGeometry x="640" y="80" width="180" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Buy" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="BUY Signal" vertex="1">
+          <mxGeometry x="910" y="50" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Sell" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="SELL Signal" vertex="1">
+          <mxGeometry x="910" y="120" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Hold" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="HOLD Signal" vertex="1">
+          <mxGeometry x="910" y="190" width="120" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Confidence" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Attach Signal Confidence
+&amp; Metadata" vertex="1">
+          <mxGeometry x="1110" y="100" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_SigDB" parent="L5_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Signal Database
+(TimescaleDB / PostgreSQL)" vertex="1">
+          <mxGeometry x="1400" y="80" width="180" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5_Discard" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=2;" value="Discard Invalid Signal" vertex="1">
+          <mxGeometry x="655" y="270" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L4_to_L5" parent="1" source="L4_ConfScore" target="L5_StratEngine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_1" parent="L5_Container" source="L5_TechEngine" target="L5_StratEngine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_3" parent="L5_Container" source="L5_StratEngine" target="L5_SigVal" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_4" parent="L5_Container" source="L5_SigVal" target="L5_Buy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Pass">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_5" parent="L5_Container" source="L5_SigVal" target="L5_Sell" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_6" parent="L5_Container" source="L5_SigVal" target="L5_Hold" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_7" parent="L5_Container" source="L5_SigVal" target="L5_Discard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Fail">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_8" parent="L5_Container" source="L5_Buy" target="L5_Confidence" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_9" parent="L5_Container" source="L5_Sell" target="L5_Confidence" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L5_10" parent="L5_Container" source="L5_Confidence" target="L5_SigDB" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Layer 6 – AI Research &amp; RAG" vertex="1">
+          <mxGeometry x="20" y="2660" width="1760" height="580" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_News" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="News Sources" vertex="1">
+          <mxGeometry x="50" y="60" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_SEC" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="SEC Filings" vertex="1">
+          <mxGeometry x="50" y="120" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Earnings" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="Earnings Calls" vertex="1">
+          <mxGeometry x="50" y="180" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Econ" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=0;" value="Economic Calendar" vertex="1">
+          <mxGeometry x="50" y="240" width="140" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Embeddings" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=0;" value="Vector Embeddings
+Pipeline" vertex="1">
+          <mxGeometry x="250" y="130" width="150" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Qdrant" parent="L6_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Qdrant
+(Vector Store)" vertex="1">
+          <mxGeometry x="460" y="115" width="140" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_AgentBox" parent="L6_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Agent Cluster (Ollama / Local LLM)" vertex="1">
+          <mxGeometry x="660" y="60" width="620" height="340" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Supervisor" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="LangGraph Supervisor" vertex="1">
+          <mxGeometry x="200" y="40" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_TechAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Technical Agent" vertex="1">
+          <mxGeometry x="20" y="140" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_NewsAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="News Agent" vertex="1">
+          <mxGeometry x="180" y="140" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_SecAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="SEC Filing Agent" vertex="1">
+          <mxGeometry x="340" y="140" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_EarningsAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Earnings Agent" vertex="1">
+          <mxGeometry x="100" y="230" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_RiskAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=0;" value="Macro/Risk Agent" vertex="1">
+          <mxGeometry x="270" y="230" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_Ollama" parent="L6_AgentBox" style="shape=process;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Ollama (Local LLMs)" vertex="1">
+          <mxGeometry x="460" y="210" width="140" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6_FinalRec" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Final AI Recommendation
+&amp; Qualitative Score" vertex="1">
+          <mxGeometry x="1350" y="190" width="220" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_1" parent="L6_Container" source="L6_News" target="L6_Embeddings" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_2" parent="L6_Container" source="L6_SEC" target="L6_Embeddings" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_3" parent="L6_Container" source="L6_Earnings" target="L6_Embeddings" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_4" parent="L6_Container" source="L6_Econ" target="L6_Embeddings" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_5" parent="L6_Container" source="L6_Embeddings" target="L6_Qdrant" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_6" parent="L6_Container" source="L6_Qdrant" target="L6_AgentBox" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="RAG Context">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_TechAgent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A2" parent="L6_AgentBox" source="L6_Supervisor" target="L6_NewsAgent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A3" parent="L6_AgentBox" source="L6_Supervisor" target="L6_SecAgent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A4" parent="L6_AgentBox" source="L6_Supervisor" target="L6_EarningsAgent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A5" parent="L6_AgentBox" source="L6_Supervisor" target="L6_RiskAgent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A6" parent="L6_AgentBox" source="L6_TechAgent" target="L6_Ollama" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_A7" parent="L6_AgentBox" source="L6_NewsAgent" target="L6_Ollama" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L6_7" parent="L6_Container" source="L6_Supervisor" target="L6_FinalRec" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#fff2cc;strokeColor=#d6b656;" value="Layer 7 – Risk Management" vertex="1">
+          <mxGeometry x="20" y="3270" width="1760" height="400" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_RiskEngine" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Portfolio Manager
+&amp; Risk Approval Engine" vertex="1">
+          <mxGeometry x="320" y="140" width="240" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_Checks" parent="L7_Container" style="swimlane;startSize=25;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="Risk Rules &amp; Limits" vertex="1">
+          <mxGeometry x="620" y="55" width="380" height="270" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_R1" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Position Sizing (Kelly/Volatility)" vertex="1">
+          <mxGeometry x="30" y="40" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_R2" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Max Portfolio Exposure" vertex="1">
+          <mxGeometry x="200" y="40" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_R3" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Stop Loss / Take Profit" vertex="1">
+          <mxGeometry x="30" y="110" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_R4" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Daily Loss Limit" vertex="1">
+          <mxGeometry x="200" y="110" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_R5" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=0;" value="Max Drawdown Guard" vertex="1">
+          <mxGeometry x="115" y="180" width="150" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_Decision" parent="L7_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Risk Approved?" vertex="1">
+          <mxGeometry x="1080" y="125" width="160" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_Approved" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Validated Order Intent" vertex="1">
+          <mxGeometry x="1350" y="155" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L7_Rejected" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="Reject / Cancel Order
+(Log Risk Event)" vertex="1">
+          <mxGeometry x="1060" y="290" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_1" parent="1" source="L5_SigDB" target="L7_RiskEngine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Signal Event">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_2" parent="1" source="L6_FinalRec" target="L7_RiskEngine" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="AI Context">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_3" parent="L7_Container" source="L7_RiskEngine" target="L7_Checks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_4" parent="L7_Container" source="L7_Checks" target="L7_Decision" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_5" parent="L7_Container" source="L7_Decision" target="L7_Approved" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Yes">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L7_6" parent="L7_Container" source="L7_Decision" target="L7_Rejected" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="No">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#f8cecc;strokeColor=#b85450;" value="Layer 8 – Execution &amp; Monitoring" vertex="1">
+          <mxGeometry x="20" y="3700" width="1760" height="650" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_Telegram" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Telegram Bot / Mobile Alert" vertex="1">
+          <mxGeometry x="100" y="80" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_ApproveGate" parent="L8_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Manual / Auto
+Approval?" vertex="1">
+          <mxGeometry x="360" y="60" width="160" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_ExecQueue" parent="L8_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Order Execution Queue
+(RabbitMQ / Redis)" vertex="1">
+          <mxGeometry x="600" y="65" width="180" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_ExecService" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Execution Service" vertex="1">
+          <mxGeometry x="840" y="80" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_OrderMgr" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Order Manager" vertex="1">
+          <mxGeometry x="1080" y="80" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_IBKROrder" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="IBKR Order API" vertex="1">
+          <mxGeometry x="1320" y="80" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_FillConf" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Fill Confirmation
+&amp; Execution Callback" vertex="1">
+          <mxGeometry x="1320" y="220" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_TradeLogger" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Trade Logger" vertex="1">
+          <mxGeometry x="1080" y="220" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_AuditLog" parent="L8_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Audit Log &amp; Trade DB" vertex="1">
+          <mxGeometry x="840" y="200" width="180" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_PerfAnalytics" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Performance Analytics Engine" vertex="1">
+          <mxGeometry x="580" y="220" width="210" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_Dashboard" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Real-time Dashboard" vertex="1">
+          <mxGeometry x="340" y="220" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_Alerts" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="Alerting System
+(Slack/PagerDuty/Email)" vertex="1">
+          <mxGeometry x="100" y="220" width="180" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_Feedback" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="FEEDBACK LOOP: Executed Trade Fills &amp; PnL Data
+(Sent back to Layer 2 Storage &amp; Layer 3/4 ML Retraining Pipeline)" vertex="1">
+          <mxGeometry x="340" y="380" width="950" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="L8_UserCancel" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=2;" value="Manual Veto / Order Expired" vertex="1">
+          <mxGeometry x="350" y="180" width="180" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_1" parent="1" source="L7_Approved" target="L8_Telegram" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_2" parent="L8_Container" source="L8_Telegram" target="L8_ApproveGate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_3" parent="L8_Container" source="L8_ApproveGate" target="L8_ExecQueue" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Approved">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_4" parent="L8_Container" source="L8_ApproveGate" target="L8_UserCancel" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Rejected">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_5" parent="L8_Container" source="L8_ExecQueue" target="L8_ExecService" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_6" parent="L8_Container" source="L8_ExecService" target="L8_OrderMgr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_7" parent="L8_Container" source="L8_OrderMgr" target="L8_IBKROrder" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_8" parent="L8_Container" source="L8_IBKROrder" target="L8_FillConf" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_9" parent="L8_Container" source="L8_FillConf" target="L8_TradeLogger" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_10" parent="L8_Container" source="L8_TradeLogger" target="L8_AuditLog" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_11" parent="L8_Container" source="L8_AuditLog" target="L8_PerfAnalytics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_12" parent="L8_Container" source="L8_PerfAnalytics" target="L8_Dashboard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_13" parent="L8_Container" source="L8_Dashboard" target="L8_Alerts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_L8_14" parent="L8_Container" source="L8_PerfAnalytics" target="L8_Feedback" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="E_Feedback_Loop" parent="1" source="L8_Feedback" target="L2_Container" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" value="Executed Trades &amp; Metrics Feed Retraining Loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1680" y="4100"/>
+              <mxPoint x="1680" y="900"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

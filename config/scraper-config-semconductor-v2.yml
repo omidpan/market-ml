@@ -1,0 +1,44 @@
+# IBKR scraper - date-addressed raw store + automatic snapshots
+#
+# Raw daily truth:
+#   data/raw/ibkr/avgo/1min/trades/extended/YYYY/YYYY-MM-DD.csv
+#
+# Automatically generated snapshot:
+#   data/raw/bootstrap/avgo/avgo_1min_extended.csv
+#
+# Symbol case does not matter in YAML. The scraper uppercases only for the
+# IBKR request and lowercases all filesystem dataset names.
+
+max_workers: 5
+output_root: data/raw/ibkr
+snapshot_root: data/raw/bootstrap
+auto_snapshot: true
+
+request_pause_seconds: 2.0
+timeout_seconds: 120
+
+defaults:
+  start_date: "2019-12-01"
+  end_date: "2026-08-09"
+  duration: "5 Y"       # fallback only when start_date is omitted
+  bar_size: "1 min"
+  sessions:
+    - extended # other options overnigh or rth
+  what_to_show: TRADES
+  currency: USD
+  calendar: XNYS
+
+groups:
+  semiconductor:
+    symbols:
+      # - avgo
+      # - amat
+      # - mrvl
+      #  - amd
+      # # - nvda
+      # # - mu
+      # - intc
+      # - tsm
+    context_symbols:
+      # - spy
+      # - qqq

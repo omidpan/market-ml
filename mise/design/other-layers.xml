@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net">
+  <diagram name="Layers 5-8 Trading Pipeline System" id="L58-Trading-Pipeline">
+    <mxGraphModel dx="2400" dy="1600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="3200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ================================================================= -->
+        <!-- LAYER 5: SIGNAL GENERATION                                        -->
+        <!-- ================================================================= -->
+        <mxCell id="L5_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Layer 5 – Signal Generation" vertex="1">
+          <mxGeometry x="20" y="20" width="1760" height="420" as="geometry" />
+        </mxCell>
+
+        <!-- Components -->
+        <mxCell id="L5_TechEngine" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;fontStyle=1;strokeColor=#666666;" value="Technical Rules Engine" vertex="1">
+          <mxGeometry x="60" y="70" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_MLInput" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=2;" value="[From L4] Prediction Service &amp; Confidence Score" vertex="1">
+          <mxGeometry x="60" y="160" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_StratEngine" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Strategy Engine&#xa;(Rule &amp; ML Synthesis)" vertex="1">
+          <mxGeometry x="340" y="100" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_SigVal" parent="L5_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Signal Validator&#xa;&amp; Thresholds?" vertex="1">
+          <mxGeometry x="640" y="80" width="180" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_Buy" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="BUY Signal" vertex="1">
+          <mxGeometry x="910" y="50" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="L5_Sell" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="SELL Signal" vertex="1">
+          <mxGeometry x="910" y="120" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="L5_Hold" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" value="HOLD Signal" vertex="1">
+          <mxGeometry x="910" y="190" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_Confidence" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Attach Signal Confidence&#xa;&amp; Metadata" vertex="1">
+          <mxGeometry x="1110" y="100" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_SigDB" parent="L5_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="Signal Database&#xa;(TimescaleDB / PostgreSQL)" vertex="1">
+          <mxGeometry x="1400" y="80" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L5_Discard" parent="L5_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=2;" value="Discard Invalid Signal" vertex="1">
+          <mxGeometry x="655" y="270" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- L5 Connections -->
+        <mxCell id="E_L5_1" edge="1" parent="L5_Container" source="L5_TechEngine" target="L5_StratEngine"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L5_2" edge="1" parent="L5_Container" source="L5_MLInput" target="L5_StratEngine"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L5_3" edge="1" parent="L5_Container" source="L5_StratEngine" target="L5_SigVal"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L5_4" edge="1" parent="L5_Container" source="L5_SigVal" target="L5_Buy"><mxGeometry relative="1" as="geometry"><mxPoint x="0" y="0" as="offset"/><mxCell value="Pass" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L5_4" /></mxGeometry></mxCell>
+        <mxCell id="E_L5_5" edge="1" parent="L5_Container" source="L5_SigVal" target="L5_Sell"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L5_6" edge="1" parent="L5_Container" source="L5_SigVal" target="L5_Hold"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L5_7" edge="1" parent="L5_Container" source="L5_SigVal" target="L5_Discard"><mxGeometry relative="1" as="geometry"><mxCell value="Fail" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L5_7" /></mxGeometry></mxCell>
+
+        <mxCell id="E_L5_8" edge="1" parent="L5_Container" source="L5_Buy" target="L5_Confidence"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L5_9" edge="1" parent="L5_Container" source="L5_Sell" target="L5_Confidence"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L5_10" edge="1" parent="L5_Container" source="L5_Confidence" target="L5_SigDB"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+
+        <!-- ================================================================= -->
+        <!-- LAYER 6: AI RESEARCH & RAG                                        -->
+        <!-- ================================================================= -->
+        <mxCell id="L6_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Layer 6 – AI Research &amp; RAG" vertex="1">
+          <mxGeometry x="20" y="470" width="1760" height="580" as="geometry" />
+        </mxCell>
+
+        <!-- Unstructured Data Sources -->
+        <mxCell id="L6_News" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="News Feeds" vertex="1">
+          <mxGeometry x="50" y="60" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_SEC" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="SEC Filings" vertex="1">
+          <mxGeometry x="50" y="120" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_Earnings" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Earnings Calls" vertex="1">
+          <mxGeometry x="50" y="180" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_Econ" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="Economic Calendar" vertex="1">
+          <mxGeometry x="50" y="240" width="140" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_Embeddings" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" value="Vector Embeddings&#xa;Pipeline" vertex="1">
+          <mxGeometry x="250" y="130" width="150" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_Qdrant" parent="L6_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;" value="Qdrant&#xa;(Vector Store)" vertex="1">
+          <mxGeometry x="460" y="115" width="140" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Agent Grouping Swimlane/Container -->
+        <mxCell id="L6_AgentBox" parent="L6_Container" style="swimlane;html=1;rounded=1;startSize=25;fontStyle=1;fontSize=14;fillColor=#f5f5f5;strokeColor=#666666;" value="Agent Cluster (Ollama / Local LLM)" vertex="1">
+          <mxGeometry x="660" y="60" width="620" height="340" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_Supervisor" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="LangGraph Supervisor" vertex="1">
+          <mxGeometry x="200" y="40" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_TechAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Technical Agent" vertex="1">
+          <mxGeometry x="20" y="140" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_NewsAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="News Agent" vertex="1">
+          <mxGeometry x="180" y="140" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_SecAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="SEC Filing Agent" vertex="1">
+          <mxGeometry x="340" y="140" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_EarningsAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Earnings Agent" vertex="1">
+          <mxGeometry x="100" y="230" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L6_RiskAgent" parent="L6_AgentBox" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Macro/Risk Agent" vertex="1">
+          <mxGeometry x="270" y="230" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_Ollama" parent="L6_AgentBox" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Ollama (Local LLMs)" vertex="1">
+          <mxGeometry x="460" y="210" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L6_FinalRec" parent="L6_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=14;" value="Final AI Recommendation&#xa;&amp; Qualitative Score" vertex="1">
+          <mxGeometry x="1350" y="190" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- L6 Connections -->
+        <mxCell id="E_L6_1" edge="1" parent="L6_Container" source="L6_News" target="L6_Embeddings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_2" edge="1" parent="L6_Container" source="L6_SEC" target="L6_Embeddings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_3" edge="1" parent="L6_Container" source="L6_Earnings" target="L6_Embeddings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_4" edge="1" parent="L6_Container" source="L6_Econ" target="L6_Embeddings"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_5" edge="1" parent="L6_Container" source="L6_Embeddings" target="L6_Qdrant"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L6_6" edge="1" parent="L6_Container" source="L6_Qdrant" target="L6_AgentBox"><mxGeometry relative="1" as="geometry"><mxCell value="RAG Context" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L6_6" /></mxGeometry></mxCell>
+
+        <!-- Inner Agent Connections -->
+        <mxCell id="E_L6_A1" edge="1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_TechAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_A2" edge="1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_NewsAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_A3" edge="1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_SecAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_A4" edge="1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_EarningsAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_A5" edge="1" parent="L6_AgentBox" source="L6_Supervisor" target="L6_RiskAgent"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L6_A6" edge="1" parent="L6_AgentBox" source="L6_TechAgent" target="L6_Ollama"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L6_A7" edge="1" parent="L6_AgentBox" source="L6_NewsAgent" target="L6_Ollama"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L6_7" edge="1" parent="L6_Container" source="L6_Supervisor" target="L6_FinalRec"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+
+        <!-- ================================================================= -->
+        <!-- LAYER 7: RISK MANAGEMENT                                         -->
+        <!-- ================================================================= -->
+        <mxCell id="L7_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#fff2cc;strokeColor=#d6b656;" value="Layer 7 – Risk Management" vertex="1">
+          <mxGeometry x="20" y="1080" width="1760" height="400" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L7_RiskEngine" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Portfolio Manager&#xa;&amp; Risk Approval Engine" vertex="1">
+          <mxGeometry x="320" y="140" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Risk Checks Swimlane Box -->
+        <mxCell id="L7_Checks" parent="L7_Container" style="swimlane;html=1;rounded=1;startSize=25;fontStyle=1;fontSize=12;fillColor=#f5f5f5;strokeColor=#666666;" value="Risk Rules &amp; Limits" vertex="1">
+          <mxGeometry x="620" y="55" width="380" height="270" as="geometry" />
+        </mxCell>
+        <mxCell id="L7_R1" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Position Sizing (Kelly/Volatility)" vertex="1">
+          <mxGeometry x="30" y="40" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L7_R2" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Max Portfolio Exposure" vertex="1">
+          <mxGeometry x="200" y="40" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L7_R3" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Stop Loss / Take Profit" vertex="1">
+          <mxGeometry x="30" y="110" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L7_R4" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Daily Loss Limit" vertex="1">
+          <mxGeometry x="200" y="110" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="L7_R5" parent="L7_Checks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Max Drawdown Guard" vertex="1">
+          <mxGeometry x="115" y="180" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L7_Decision" parent="L7_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Risk Approved?" vertex="1">
+          <mxGeometry x="1080" y="125" width="160" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L7_Approved" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Validated Order Intent" vertex="1">
+          <mxGeometry x="1350" y="155" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L7_Rejected" parent="L7_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="Reject / Cancel Order&#xa;(Log Risk Event)" vertex="1">
+          <mxGeometry x="1060" y="290" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- L7 Connections -->
+        <mxCell id="E_L7_1" edge="1" parent="1" source="L5_SigDB" target="L7_RiskEngine">
+          <mxGeometry relative="1" as="geometry"><mxCell value="Signal Event" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L7_1" /></mxGeometry>
+        </mxCell>
+        <mxCell id="E_L7_2" edge="1" parent="1" source="L6_FinalRec" target="L7_RiskEngine">
+          <mxGeometry relative="1" as="geometry"><mxCell value="AI Context" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L7_2" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="E_L7_3" edge="1" parent="L7_Container" source="L7_RiskEngine" target="L7_Checks"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L7_4" edge="1" parent="L7_Container" source="L7_Checks" target="L7_Decision"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L7_5" edge="1" parent="L7_Container" source="L7_Decision" target="L7_Approved">
+          <mxGeometry relative="1" as="geometry"><mxCell value="Yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L7_5" /></mxGeometry>
+        </mxCell>
+        <mxCell id="E_L7_6" edge="1" parent="L7_Container" source="L7_Decision" target="L7_Rejected">
+          <mxGeometry relative="1" as="geometry"><mxCell value="No" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L7_6" /></mxGeometry>
+        </mxCell>
+
+
+        <!-- ================================================================= -->
+        <!-- LAYER 8: EXECUTION & MONITORING                                  -->
+        <!-- ================================================================= -->
+        <mxCell id="L8_Container" parent="1" style="swimlane;html=1;rounded=1;startSize=35;fontStyle=1;fontSize=18;fillColor=#f8cecc;strokeColor=#b85450;" value="Layer 8 – Execution &amp; Monitoring" vertex="1">
+          <mxGeometry x="20" y="1510" width="1760" height="650" as="geometry" />
+        </mxCell>
+
+        <!-- Approval Gateway -->
+        <mxCell id="L8_Telegram" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Telegram Bot / Mobile Alert" vertex="1">
+          <mxGeometry x="100" y="80" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_ApproveGate" parent="L8_Container" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="Manual / Auto&#xa;Approval?" vertex="1">
+          <mxGeometry x="360" y="60" width="160" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Execution Subsystem -->
+        <mxCell id="L8_ExecQueue" parent="L8_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="Order Execution Queue&#xa;(RabbitMQ / Redis)" vertex="1">
+          <mxGeometry x="600" y="65" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_ExecService" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Execution Service" vertex="1">
+          <mxGeometry x="840" y="80" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_OrderMgr" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Order Manager" vertex="1">
+          <mxGeometry x="1080" y="80" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_IBKROrder" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" value="IBKR Order API" vertex="1">
+          <mxGeometry x="1320" y="80" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_FillConf" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" value="Fill Confirmation&#xa;&amp; Execution Callback" vertex="1">
+          <mxGeometry x="1320" y="220" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Monitoring & Analytics Subsystem -->
+        <mxCell id="L8_TradeLogger" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Trade Logger" vertex="1">
+          <mxGeometry x="1080" y="220" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_AuditLog" parent="L8_Container" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="Audit Log &amp; Trade DB" vertex="1">
+          <mxGeometry x="840" y="200" width="180" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_PerfAnalytics" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="Performance Analytics Engine" vertex="1">
+          <mxGeometry x="580" y="220" width="210" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_Dashboard" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" value="Real-time Dashboard" vertex="1">
+          <mxGeometry x="340" y="220" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L8_Alerts" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;" value="Alerting System&#xa;(Slack/PagerDuty/Email)" vertex="1">
+          <mxGeometry x="100" y="220" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Feedback Loop Box -->
+        <mxCell id="L8_Feedback" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;" value="FEEDBACK LOOP: Executed Trade Fills &amp; PnL Data&#xa;(Sent back to L2 Database &amp; L3/L4 Feature Store for Model Retraining)" vertex="1">
+          <mxGeometry x="340" y="380" width="950" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Cancel Path -->
+        <mxCell id="L8_UserCancel" parent="L8_Container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=2;" value="Manual Veto / Order Expired" vertex="1">
+          <mxGeometry x="350" y="180" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- L8 Connections -->
+        <mxCell id="E_L8_1" edge="1" parent="1" source="L7_Approved" target="L8_Telegram">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="E_L8_2" edge="1" parent="L8_Container" source="L8_Telegram" target="L8_ApproveGate"><mxGeometry relative="1" as="geometry" /></mxCell>
+        
+        <mxCell id="E_L8_3" edge="1" parent="L8_Container" source="L8_ApproveGate" target="L8_ExecQueue">
+          <mxGeometry relative="1" as="geometry"><mxCell value="Approved" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L8_3" /></mxGeometry>
+        </mxCell>
+        <mxCell id="E_L8_4" edge="1" parent="L8_Container" source="L8_ApproveGate" target="L8_UserCancel">
+          <mxGeometry relative="1" as="geometry"><mxCell value="Rejected" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_L8_4" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="E_L8_5" edge="1" parent="L8_Container" source="L8_ExecQueue" target="L8_ExecService"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_6" edge="1" parent="L8_Container" source="L8_ExecService" target="L8_OrderMgr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_7" edge="1" parent="L8_Container" source="L8_OrderMgr" target="L8_IBKROrder"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L8_8" edge="1" parent="L8_Container" source="L8_IBKROrder" target="L8_FillConf"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_9" edge="1" parent="L8_Container" source="L8_FillConf" target="L8_TradeLogger"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_10" edge="1" parent="L8_Container" source="L8_TradeLogger" target="L8_AuditLog"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_11" edge="1" parent="L8_Container" source="L8_AuditLog" target="L8_PerfAnalytics"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_12" edge="1" parent="L8_Container" source="L8_PerfAnalytics" target="L8_Dashboard"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="E_L8_13" edge="1" parent="L8_Container" source="L8_Dashboard" target="L8_Alerts"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="E_L8_14" edge="1" parent="L8_Container" source="L8_PerfAnalytics" target="L8_Feedback"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Cross-Layer Feedback Link (L8 -> L2/L4) -->
+        <mxCell id="E_Feedback_Loop" edge="1" parent="1" source="L8_Feedback" target="L5_Container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1680" y="1910" />
+              <mxPoint x="1680" y="230" />
+            </Array>
+            <mxCell value="Historical Fills &amp; Metrics Feed L2 Storage &amp; Retraining" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="E_Feedback_Loop" />
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

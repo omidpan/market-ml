@@ -1,0 +1,186 @@
+timezone: America/New_York
+calendar: XNYS
+
+source:
+  frequency: 1min
+  bar_label: start
+##### sessions ##########
+sessions:
+  premarket:
+    start: "04:00"
+    end_exclusive: "09:30"
+    crosses_midnight: false
+  regular:
+    start: "09:30"
+    end_exclusive: "16:00"
+    crosses_midnight: false
+  aftermarket:
+    start: "16:00"
+    end_exclusive: "20:00"
+    crosses_midnight: false
+  overnight:
+    start: "20:00"
+    end_exclusive: "04:00"
+    crosses_midnight: true
+####### validation #########
+validation:
+  require_minute_alignment: true
+  require_positive_prices: true
+  report_zero_volume: true
+  detect_fully_missing_trading_days: true
+####### regularization ################
+regularization:
+  fill_internal_gaps: true               # Conservative causal policy:
+  max_internal_gap_minutes: 5            # - only small internal gaps may be filled
+  fill_leading_gaps: false                # - leading/trailing/full-session gaps remain unresolved
+  fill_trailing_gaps: false
+  fill_fully_missing_sessions: false
+
+  # Synthetic bars use one previous OBSERVED close.
+  synthetic_ohlc: previous_close
+  synthetic_volume: 0
+  synthetic_wap: previous_close
+  synthetic_bar_count: 0
+########## parquet ################
+parquet:
+  compression: zstd
+  partition_by:
+    - symbol
+    - year
+    - month
+######## pipeline ########################
+pipeline:                                
+  source_id: primary_extended
+########### stages #####################   
+  stages:   # ------------------How pipeline works---------------------------------------------
+    validate:        # ------------------How pipeline works-------------
+      enabled: false   #-------------------- Pipeline orchestration
+    canonicalize:     #---------------------- default execution ./scripts/market_pipeline_run.sh nvda
+      enabled: false   #---- single stage in CI ./scripts/market_pipeline_run.sh nvda --stage validate
+    observed_parquet:  #--partial executation ./scripts/market_pipeline_run.sh nvda --from-stage regularize --to-stage features        
+      enabled: false
+    regularize:
+      enabled: false
+    regularized_parquet:
+      enabled: false
+    resample:
+      enabled: false
+    features:
+      enabled: false
+    targets:
+      enabled: false
+    sequences:            #Sequence indexes are model/target-instrument artifacts, so keep them
+      enabled: false      #disabled by default. Run explicitly once targets exist for the symbol.
+    model_matrix:
+      enabled: false
+    train_model:
+      enabled: false
+
+
+  ###### resampling
+
+  resample:
+    timeframes:
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+  ############### features #####################
+  features:
+    timeframes:
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+  ############### targets   #####################
+  targets:
+    horizons_minutes:
+      - 5
+      - 15
+      - 30
+    direction_threshold_bps: 0.0       # Keep the canonical target store at threshold 0. Experiment-specific
+    require_same_session: false        # neutral bands can later be derived from target_return_bps_*.
+  ######### sequences configuration for window slide, stride
+  sequences:
+    # Baseline experiment: 120 one-minute observations -> 15-minute target.
+    sequence_length: 120
+    target_horizon_minutes: 15
+    stride_minutes: 1      # Sliding-window step. 1 means a new candidate endpoint every minute.
+    scope: continuous  # premarket --> regualar --> after market
+    sessions:       ## other options are same_sessions , and overnight
+      - premarket
+      - regular
+      - aftermarket
+      # - overnight   intentionally excluded until an authoritative overnight source exists.
+
+    split:
+      train_fraction: 0.70 #Splits are assigned by exchange trading_date, not arbitrary row counts.
+      validation_fraction: 0.15  #The test fraction is derived as 1 - train - validation.
+
+  ########## model matrix (online-safe causal features)
+  model_matrix:
+    feature_set: core_v1
+    scaler: standard
+    output_dtype: float32
+
+    features:
+########## RETURNS ##########
+      - f_1m_log_return_1
+      - f_1m_log_return_5
+      - f_1m_log_return_15
+      - f_1m_log_return_30
+      - f_1m_log_return_60
+########## Bar geometry ##########
+      - f_1m_true_range_bps
+      - f_1m_body_bps
+      - f_1m_range_bps
+      - f_1m_upper_shadow_fraction
+      - f_1m_lower_shadow_fraction
+      - f_1m_body_to_range
+      - f_1m_close_wap_bps
+####### Activity ##########
+      - f_1m_log_volume
+      - f_1m_log_bar_count
+      - f_1m_log_dollar_volume
+######### Known time/session state
+      - f_session_progress
+      - f_time_minute_sin
+      - f_time_minute_cos
+      - f_time_dow_sin
+      - f_time_dow_cos
+      - f_session_is_premarket
+      - f_session_is_regular
+      - f_session_is_aftermarket
+################# training ###########################
+  training:
+    architecture: lstm
+
+    # Frozen volatility-relative 3-class policy.
+    label_mode: label_policy_3class
+
+    label_policy:
+      name: atr_relative_3class_v1
+      atr_period: 14
+      multiplier: 0.75
+
+    neutral_threshold_bps: 0.0
+
+    hidden_size: 64
+    num_layers: 2
+    dropout: 0.20
+
+    batch_size: 512
+    epochs: 10
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    gradient_clip_norm: 1.0
+
+    monitor: val_loss
+    early_stopping_patience: 3
+    min_delta: 0.0001
+
+    seed: 42
+    mixed_precision: true
+    workers: 2  
+
+############## END of CONFIGURATION ################################################

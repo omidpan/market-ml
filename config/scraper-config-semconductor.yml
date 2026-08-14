@@ -1,0 +1,22 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: python
+    tag: "3.11-slim"
+
+inputs:
+  - name: market-ml-project
+  - name: market-data
+
+params:
+  # Change these to match your absolute local paths from your .env file
+  DATA_PATH: /Users/leo/champlain/market_ml/data
+  CONFIG_PATH: /Users/leo/champlain/market_ml/config
+  REPORTS_PATH: /Users/leo/champlain/market_ml/reports
+  PYTHON: python
+
+run:
+  path: market-ml-project/scripts/market_pipeline_run.sh
+  args: ["AMAT", "--stage", "validate"]

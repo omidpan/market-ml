@@ -1,0 +1,15 @@
+.DS_Store
+data/raw/*
+data/canonical/observed/*
+data/canonical/regularized/*
+data/staging/*
+data/*
+src/*.pyc
+*.env
+__pycache__
+src/data
+src/data/raw/bootstarp/*
+src/data/ibkr/*
+data/parquet/*
+reports/*
+docker/docker/models/mlflow.db

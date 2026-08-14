@@ -1,0 +1,280 @@
+//@version=6
+indicator("ACD", overlay=true,timeframe ="1",format = format.price,timeframe_gaps =true)
+import TradingView/ta/10
+
+// Get current chart resolution in milliseconds
+isGreaterThan1D = (timeframe.main_period == "W" or timeframe.main_period == "M" or timeframe.main_period == "1D" or timeframe.main_period == "1W" or timeframe.main_period == "1M")
+
+// groups
+group1 = "Market Begin(hour/minute)"
+group2="Market Close (Hour/minute)"
+group3 = "ACD Opening Range"
+group4="Show Pivots"
+group5="Bollinger"
+//*************************************************************** pivot Input  *****************************************************************
+isPivot=input.bool(false,'Show 3Days pivot','This is the 3 days pivot based on max high , max low and last closed,A=(max+low+closed)/3, B(max+low)/2, delta=|A-B|, up=A+d, down=A-d, level=A',group = group4)
+isAcd=input.bool(true,'Show ACD lines','show and hide acd lines',group = group4)
+isBollinger=input.bool(true,'Show Bollinger','show and hide Bollinger lines',group = group4)
+isSignalling=input.bool(false,'signal','acd/bollinger',group = group4)
+
+//************************************************ START TIME  input *****************************************************************
+startHour = input.int(9, title="Market Begin Hour(0-23)", minval=0, maxval=23,group = group1)
+startMinutes = input.int(30, title="Market Begin Minutes(0-59)", minval=0, maxval=59,group = group1)
+
+//************************************************ ENd TIME  input *****************************************************************
+endHour = input.int(16, title="Market Close Hour(0-23)", minval=0, maxval=23,group = group2)
+endMinutes = input.int(0, title="Market Close Minutes(0-59)", minval=0, maxval=59,group = group2)
+
+//************************************************ OP Range Input *****************************************************************
+opDuration = input(9, title="Opening Range",group = group3) // default is 15 minutes
+
+//************************************************ ACD Level input *****************************************************************
+
+atrLength = input.int(21, title="ATR (default 14 days)",group = group3)
+A_weight = input(0.10, title="A level weight (10 % default)",group = group3) // default is 10 percent
+C_weight = input(0.20, title="C level weight (20 % default)",group = group3) // default is 20 percent
+//******************* CALCULATE Time and Range (EPOCH ) **************************************************************************************
+startTime = timestamp("America/New_York", year(time), month(time), dayofmonth(time), startHour, startMinutes)
+endTime = timestamp("America/New_York", year(time), month(time), dayofmonth(time), endHour, endMinutes)
+openingRangeEnd = startTime + opDuration * 60 * 1000
+
+
+// ******************************* ACD Predicates ************************************************************************************************
+beforeSession = time < startTime
+afterSession = time> endTime
+newDay = ta.change(dayofmonth(time)) != 0
+
+
+//***********************************************  OP RANGE Configuration*****************************************************************************
+//Define op high and low
+var float openRangeHigh = na
+var float openRangeLow = na
+if (newDay)
+    openRangeHigh := na
+    openRangeLow := na
+if  beforeSession or afterSession
+    openRangeHigh := na
+    openRangeLow := na
+if (time >= startTime and time <= openingRangeEnd and not isGreaterThan1D)
+    openRangeHigh := na(openRangeHigh) ? high : math.max(openRangeHigh, high)
+    openRangeLow := na(openRangeLow) ? low : math.min(openRangeLow, low)
+
+
+// Find ATR simle range and multiplies to A_weight
+dailyATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength))
+
+
+//************************************************** define A  levels ********************************************************************
+
+A_LEVEL=dailyATR[1]*A_weight
+var float A_Up = na
+var float A_Down = na
+if (time >= startTime and time <= openingRangeEnd and not beforeSession and not afterSession and not isGreaterThan1D)
+    A_Up := openRangeHigh + A_LEVEL
+    A_Down := openRangeLow - A_LEVEL
+
+//************************************************** define C  levels ********************************************************************
+C_Level=dailyATR[1]*C_weight
+var float C_Up = na
+var float C_Down = na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession) and not isGreaterThan1D)
+    C_Up := openRangeHigh + C_Level
+    C_Down := openRangeLow - C_Level
+
+
+
+//************************************************************ plot OP *****************************************************************************************
+t1= plot(((not isGreaterThan1D and isAcd) and time >= openingRangeEnd and time <= endTime) ? openRangeHigh : na, title="OP^", color=color.blue, linewidth=1, style=plot.style_linebr)
+t2= plot(((not isGreaterThan1D and isAcd)  and time >= openingRangeEnd and time <= endTime) ? openRangeLow : na, title="OP!", color=color.blue, linewidth=1, style=plot.style_linebr)
+fill(t1, t2, color=color.rgb(156, 156, 156, 98)) 
+
+//******************************************* plot A levels ***************************************************************************************************** 
+a1=plot(((not isGreaterThan1D and isAcd)  and time >= openingRangeEnd and time <= endTime) ? A_Up : na, title="A^", color=color.rgb(232, 211, 49), linewidth=1, style=plot.style_linebr)
+a2=plot(((not isGreaterThan1D and isAcd)  and time >= openingRangeEnd and time <= endTime) ? A_Down : na, title="A!", color=color.rgb(232, 211, 49), linewidth=1, style=plot.style_linebr)
+// fill(a1, a2, color=color.rgb(156, 156, 156, 98)) 
+
+//************************************************* PLOT C LEVELs ****************************************************************************************************
+c1=plot(((not isGreaterThan1D and isAcd)  and time >= openingRangeEnd and time <= endTime) ? C_Up : na, title="C^", color=color.rgb(239, 238, 223), linewidth=2, style=plot.style_linebr)
+c2=plot(((not isGreaterThan1D and isAcd)  and time >= openingRangeEnd and time <= endTime) ? C_Down : na, title="C!", color=color.rgb(239, 238, 223), linewidth=2, style=plot.style_linebr)
+fill(c1, c2, color=color.rgb(156, 156, 156, 89)) 
+
+// ********************************************** 3 Days ACD Pivots  **************************************************************************
+
+// Define the high, low, and close of the previous 3 days (excluding today)
+prevHigh = request.security(syminfo.tickerid, 'D', high[1],lookahead = barmerge.lookahead_on)  // High of the previous day
+prevHigh2 = request.security(syminfo.tickerid, "1D", high[2],lookahead = barmerge.lookahead_on) // High of the day before previous
+prevHigh3 = request.security(syminfo.tickerid, "1D", high[3],lookahead = barmerge.lookahead_on) // High of 3 days ago
+prevLow = request.security(syminfo.tickerid, "1D", low[1],lookahead = barmerge.lookahead_on)    // Low of the previous day
+prevLow2 = request.security(syminfo.tickerid, "1D", low[2],lookahead = barmerge.lookahead_on)   // Low of the day before previous
+prevLow3 = request.security(syminfo.tickerid, "1D", low[3],lookahead = barmerge.lookahead_on)   // Low of 3 days ago
+prevClose = request.security(syminfo.tickerid, "1D", close[1],lookahead = barmerge.lookahead_on) // Close of the previous day
+
+//************************************************** Calculate Pivot Highest High and Lowest Low ********************************************************************
+var float highestHigh = na
+var float lowestLow = na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))
+    highestHigh := math.max(prevHigh, math.max(prevHigh2, prevHigh3))  // Highest high from the last 3 days
+    lowestLow := math.min(prevLow, math.min(prevLow2, prevLow3))       // Lowest low from the last 3 days
+
+var float A=na
+var float B=na
+var float d=na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))   
+    // Calculate A, B, and d
+    A := (highestHigh + lowestLow + prevClose) / 3
+    B := (highestHigh + lowestLow) / 2
+    d := math.abs(A - B)
+//************************************************** Pivot (Level UP/Down and Set) ********************************************************************
+var float level=na
+var float levelUp=na
+var float levelDown=na
+if (time >= startTime and time <= openingRangeEnd and not (beforeSession and afterSession))   
+    levelUp:=A + d
+    levelDown:=A-d
+    level:=A
+//*********** display conditions predicate ****************************
+   
+
+p1=plot( isPivot and (time >= openingRangeEnd and time <= endTime) and not isGreaterThan1D ? levelUp : na, color=color.rgb(211, 224, 212, 68), linewidth=4, title="PV^", style=plot.style_linebr,display=display.pane )
+p0=plot(isPivot and (time >= openingRangeEnd and time <= endTime) and not isGreaterThan1D ? level : na, color=color.rgb(211, 224, 212, 82), linewidth=4, title="PV", style=plot.style_linebr,display=display.pane )
+p2= plot(isPivot and (time >= openingRangeEnd and time <= endTime) and not isGreaterThan1D ? levelDown : na, color=color.rgb(211, 224, 212, 80), linewidth=4, title="Pv!", style=plot.style_linebr,display=display.pane )
+//******************************************************* END OF ACD ***********************************************************************
+
+
+//###################### Bollinger BAND ##################################################################
+length = input.int(36,title = "length",group = group5)
+mult   = input.float(2.0,title = "std deviation",group = group5)
+timeframe=input.string("60",title = "timeframe (minutes) ",group = group5)
+
+// === Get 30-minute WMA and StdDev via request.security ===
+basis = request.security(syminfo.tickerid, timeframe, ta.ema(close,length))
+stdev = request.security(syminfo.tickerid, timeframe, ta.stdev(close, length))
+
+upper = basis + mult * stdev
+lower = basis - mult * stdev
+
+// === Only show during regular session ===
+// session = syminfo.session 
+// isRegular= session =='extended'
+
+// === Conditionally plot only during regular hours ===
+bb=plot(isBollinger? basis : na, title="Basis", color=color.new(color.orange, 60),linewidth = 2,display = display.pane)
+u=plot(isBollinger ? upper : na, title="Upper", color=color.green,display = display.none)
+l= plot(isBollinger? lower : na, title="Lower", color=color.red,display = display.none)
+// fill(u, l , color=color.new(color.lime, 91))
+fill(u, l, color = (close < basis) ? color.new(color.red, 85) : color.new(color.lime, 91))
+
+//********* signalling ***********************************************************************************************
+// ##################### UP conditions #######################
+[tfOpen, tfClose] = request.security(syminfo.tickerid, "2", [open, close])
+isGreen = tfClose > tfOpen
+isRed   = tfClose < tfOpen
+middlePrice=(tfOpen+tfClose)/2
+middleOpenning=(openRangeHigh+openRangeLow)/2
+opHighSignal = false
+bollUP = false
+opLowSignal = false
+bollDown = false
+//######################## up conditions ##############################
+if (ta.crossover(middlePrice, middleOpenning) and (time>=openingRangeEnd)) 
+    opHighSignal := true
+    bollUP:=middlePrice>=basis
+if (ta.crossover(middlePrice, basis) and (time>=openingRangeEnd))
+    bollUP := true
+    opHighSignal:=middlePrice>=middleOpenning
+if(middlePrice>=basis and (time>=openingRangeEnd))
+    bollUP:=true
+    opHighSignal:=middlePrice>=middleOpenning
+if(middlePrice>=middleOpenning and (time>=openingRangeEnd))
+    opHighSignal:=true
+    bollUP:=middlePrice>=basis 
+check_up=(opHighSignal or bollUP) and (time>=openingRangeEnd) and time<=endTime
+//######################## down conditions ##############################
+if (ta.crossunder(middlePrice, middleOpenning) and (time>=openingRangeEnd)) 
+    opLowSignal := true
+    bollDown:=middlePrice<=basis
+if (ta.crossunder(middlePrice, basis) and (time>=openingRangeEnd))
+    bollDown := true
+    opLowSignal:=middlePrice<=middleOpenning
+if(middlePrice<=basis and (time>=openingRangeEnd))
+    bollDown:=true
+    opLowSignal:=middlePrice<=middleOpenning
+if(middlePrice<=middleOpenning and (time>=openingRangeEnd))
+    opLowSignal:=true
+    bollDown:=middlePrice<=basis 
+check_down=(opLowSignal or bollDown) and (time>=openingRangeEnd) and time<=endTime
+
+closeTimeFrame = request.security(syminfo.tickerid, "2", close)
+
+//=== UP logic with timer ===//
+var int upStartTime = na
+var int countUP = 0
+triggerUp = isSignalling and check_up
+
+// Start or reset timer
+if triggerUp and na(upStartTime)
+    upStartTime := time
+
+if not triggerUp
+    upStartTime := na
+    countUP := 0
+    bollUP:=false
+    opHighSignal:=false
+//=== low logic with timer ===//
+var int downStartTime = na
+var int countDown = 0
+triggerDown= isSignalling and check_down
+
+// Start or reset timer
+if triggerDown and na(downStartTime)
+    downStartTime := time
+
+if not triggerDown
+    downStartTime := na
+    countDown := 0
+    bollDown:=false
+    opLowSignal:=false
+// Get current chart timeframe as string
+// tfStr = timeframe.period
+
+// // Create a variable to store the number of minutes
+// tfMinutes = switch tfStr
+//     "1"     => 1
+//     "3"     => 3
+//     "5"     => 5
+//     "15"    => 15
+//     "30"    => 30
+// countCondition = switch tfStr
+//     "1"     => 5
+//     "3"     => 4
+//     "5"     => 3
+//     "15"    => 2
+//     "30"    => 1
+// Count bars only if timer is running and within 5 mins
+withinUpWindow = (not na(upStartTime) ) and(time - upStartTime <=5*60 * 1000)
+withinDownWindow = ( not na(downStartTime)) and (time-downStartTime<=5*60*1000)
+
+priceAbove = closeTimeFrame >= middlePrice or closeTimeFrame>=basis
+priceDown = closeTimeFrame <= middlePrice or closeTimeFrame<=basis
+countUP := withinUpWindow and priceAbove ? countUP + 1 : countUP
+countDown := withinDownWindow and priceDown ? countDown + 1 : countDown
+// if(withinUpWindow)
+//     log.info("windows: {0} and count {1} ,{2} isGreen : {3} , isRed {4}",(time - upStartTime),countUP,triggerUp,isGreen,isRed)
+finalUpSignal = withinUpWindow and countUP >= 3 and isGreen
+finalDownSignal = withinDownWindow and countDown >= 3 and isRed
+plotshape(finalUpSignal, location=location.belowbar, style=shape.labelup, color=color.white, size=size.tiny)
+plotshape(finalDownSignal, location=location.abovebar, style=shape.labeldown, color=color.yellow, size=size.tiny)
+// alertcondition(finalUpSignal, title="Buy Potential", message="Check MACD on {{ticker}}")
+
+
+
+
+
+// var int countDown=0
+// priceDown = close_3m <= openRangeLow
+// countDown := priceDown and (isSignalling and check_down) ? countDown + 1 : 0
+
+// plotshape(isSignalling and check_down and countDown>=2, location=location.abovebar,size = size.tiny,style = shape.labeldown, color=color.yellow)
+
+// //******* send notification ********************************************
+// alertcondition(isSignalling and check_down and countDown>=2, title="Sell potentianl", message="Check MACD on {{ticker}}")

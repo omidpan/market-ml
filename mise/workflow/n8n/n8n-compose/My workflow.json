@@ -1,0 +1,165 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -512,
+        -128
+      ],
+      "id": "293890c0-4274-42f4-828c-51edcdfaa147",
+      "name": "Telegram Trigger",
+      "webhookId": "fecfc6cf-ab9f-4dfa-a051-562ca118990f",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zz1YbzcRrmB5KAaf",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message.text }}",
+        "options": {
+          "systemMessage": "=# ROLE\nYou are the smart assistance called Qbit helping trading signals.\n\n# ADDITIONAL INFORMATION\nyou are currently chat and give advise to {{ $json.message.chat.first_name }}\nIf {{ $json.message.chat.first_name }} asks about a price of symbol in Stock market, then find the Symbol of the stock in yahoo finance of date which is {{ $today }}\nYou must summerize the answer in simple way like like current Tesla price is "
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -304,
+        -128
+      ],
+      "id": "00d22bba-bb99-4ad7-ac30-c5d9684152f4",
+      "name": "telegramAI"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.message.chat.id }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -224,
+        144
+      ],
+      "id": "b00cb80c-6c0b-4bdd-baf3-e7d1d005d843",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -448,
+        80
+      ],
+      "id": "eafb2192-5b89-4ee2-9e15-8eed4938ce8e",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "E87AQRmwzX9vSOJp",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        48,
+        -128
+      ],
+      "id": "38efb2f6-cafa-49c6-a94f-3e1a281a180b",
+      "name": "Send a text message",
+      "webhookId": "131d3c9d-a8b3-4f57-90e1-bdefbece0ef7",
+      "alwaysOutputData": true,
+      "credentials": {
+        "telegramApi": {
+          "id": "tszo6GIeVEkEfNWG",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "telegramAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "telegramAI",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "telegramAI": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "telegramAI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "02198805-ee5e-41ec-89ba-1a4882084af4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3a1cda3359aab643b1b532f720d3f2da6278126f3438081a9748048a5fd4ce75"
+  },
+  "nodeGroups": [],
+  "id": "8u99WM7kn4SuAiks",
+  "tags": []
+}
