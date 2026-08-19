@@ -181,6 +181,16 @@ pipeline:
 
     seed: 42
     mixed_precision: true
-    workers: 2  
+    workers: 2
+
+################# state machine features (ACD integration, Milestone 1) ###########
+  state_machine_features:
+    acd_root: null   # defaults to $HOME/acd_experiments_local when unset
+    config_id: nvda__or5__atr14__a010__c020__rules-v2
+    regime_config_id: nvda__or5__atr14__a010__c020__rules-v2__env-e1__thr-quantile-frozen-6ee45849cb__regime-moderate_or_anchored-r1__score-r1
+    regime_policy_name: moderate_or_anchored
+    regime_policy_version: r1
+    feature_set_identity: core_v1_acd_v1
+    common_modeling_start: "2020-01-03"
 
 ############## END of CONFIGURATION ################################################
