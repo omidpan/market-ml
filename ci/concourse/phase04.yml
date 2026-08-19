@@ -1,0 +1,58 @@
+# Milestone 1 — Concourse task config, Phase 04: pre-training preparation
+# ONLY (labels + generated configs + preflight + validation).
+#
+# Standalone Concourse TASK config, invoked from ci/concourse/pipeline.yml's
+# `phase04-prepare-control-vs-acd` job (gated on phase03 via `passed:`). See
+# pipeline.yml for the real resource/dependency wiring.
+#
+# Scope is intentionally narrow: `--mode all` on
+# scripts/run_phase4_control_vs_acd.py only builds the shared label-policy
+# artifact, generates the CONTROL/ACD config clones, runs
+# `train_model.py --preflight-only` for both variants (which loads/validates
+# data and labels but never imports TensorFlow/Keras), and runs the Phase-4
+# pre-training validation checks. Actual LSTM training is Google Colab GPU
+# ONLY — it must never run on this machine, in Claude Code, or on a
+# Concourse worker. This task therefore never invokes `--mode train-control`
+# / `--mode train-acd`, never imports TensorFlow/Keras, and never creates
+# model artifacts. `train-control`/`train-acd` remain available as modes on
+# scripts/run_phase4_control_vs_acd.py for later, separate, explicitly
+# human-approved Colab-side invocation — Concourse must never call them.
+#
+# Declared outputs (shared label-policy Parquet + report, and the two
+# generated per-variant config YAMLs) are exactly the reproducible,
+# Colab-ready artifacts a later Colab training run needs as input; they are
+# `put` to persistent resources by pipeline.yml. TEST is never opened by
+# anything in this task (preflight only prints the TEST row count, never its
+# values — see train_model.py's own sealed-TEST behavior).
+
+platform: linux
+
+image_resource:
+  type: registry-image
+  source: { repository: python, tag: "3.11-slim" }
+
+inputs:
+  - name: market-ml-repo
+  - name: model-matrix-phase3-data
+  - name: features-1m-acd-v1-encoded-data
+
+outputs:
+  - name: label-policy-phase4-out
+  - name: label-policy-reports-phase4-out
+  - name: generated-configs-phase4-out
+
+run:
+  path: bash
+  dir: market-ml-repo
+  args:
+    - -c
+    - |
+      set -euo pipefail
+      pip install --quiet -r requirements.txt
+
+      python scripts/run_phase4_control_vs_acd.py --mode all \
+        --model-matrix-root ../model-matrix-phase3-data \
+        --encoded-features-root ../features-1m-acd-v1-encoded-data \
+        --label-policy-root ../label-policy-phase4-out \
+        --label-policy-reports-root ../label-policy-reports-phase4-out \
+        --generated-config-dir ../generated-configs-phase4-out

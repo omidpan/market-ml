@@ -71,9 +71,7 @@ def sequence_root(project: Path, args: argparse.Namespace) -> Path:
     session_key = "+".join(args.sessions)
     return (
         project
-        / "data"
-        / "parquet"
-        / "model_matrix"
+        / args.model_matrix_root
         / f"sequence_length={args.sequence_length}"
         / f"horizon={args.horizon}m"
         / f"scope={args.scope}"
@@ -91,9 +89,7 @@ def output_root(
 ) -> Path:
     return (
         project
-        / "data"
-        / "parquet"
-        / "label_policy"
+        / args.label_policy_root
         / f"policy={args.policy_name}"
         / f"atr_period={args.atr_period}"
         / f"horizon={args.horizon}m"
@@ -113,7 +109,7 @@ def report_file(
         f"_h{args.horizon}"
         f"_m{path_number(args.multiplier)}.json"
     )
-    return project / "reports" / "label_policy" / symbol / name
+    return project / args.reports_root / symbol / name
 
 
 def symbol_parquet_files(root: Path, symbol: str) -> list[Path]:
@@ -917,6 +913,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--symbol",
         required=True,
         help="Symbol, e.g. nvda.",
+    )
+
+    parser.add_argument(
+        "--model-matrix-root",
+        default="data/parquet/model_matrix",
+        help=(
+            "Base model_matrix root (relative to --project-root) whose "
+            "sequence-endpoint tree provides the label rows. Default: "
+            "data/parquet/model_matrix (unchanged production behavior)."
+        ),
+    )
+
+    parser.add_argument(
+        "--label-policy-root",
+        default="data/parquet/label_policy",
+        help=(
+            "Base output root (relative to --project-root) for the derived "
+            "label-policy artifact. Default: data/parquet/label_policy "
+            "(unchanged production behavior)."
+        ),
+    )
+
+    parser.add_argument(
+        "--reports-root",
+        default="reports/label_policy",
+        help=(
+            "Base report root (relative to --project-root) for the build "
+            "report JSON. Default: reports/label_policy (unchanged "
+            "production behavior)."
+        ),
     )
 
     parser.add_argument(

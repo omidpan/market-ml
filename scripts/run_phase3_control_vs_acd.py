@@ -10,6 +10,12 @@ sequence_index or production model_matrix (separate Phase-3 output roots).
 
     python scripts/run_phase3_control_vs_acd.py --mode all
     python scripts/run_phase3_control_vs_acd.py --mode validate
+
+All root paths default to the locations used throughout Milestone 1
+Phase 3 (unchanged local-run behavior, byte-identical to the previously
+validated 26/26-check runs). They can be overridden via CLI flags to point
+at Concourse-mounted input/output directories instead of assumed-present
+local paths — see ci/concourse/phase03.yml.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,19 +48,18 @@ from model_matrix import DEFAULT_FEATURES  # noqa: E402
 SYMBOL = "nvda"
 CONFIG_PATH = REPO_ROOT / "config" / "pipeline.yaml"
 
-FEATURES_1M_ACD_V1 = REPO_ROOT / "data/parquet/features_1m_acd_v1"
-FEATURES_1M_ACD_V1_ENCODED = REPO_ROOT / "data/parquet/features_1m_acd_v1_encoded"
-TARGETS_1M = REPO_ROOT / "data/parquet/targets_1m"
-TARGETS_1M_PHASE3_VIEW = REPO_ROOT / "data/parquet/targets_1m_phase3_common_v1"
-SEQUENCE_INDEX_ROOT = REPO_ROOT / "data/parquet/sequence_index_phase3_common_v1"
-MODEL_MATRIX_ROOT = REPO_ROOT / "data/parquet/model_matrix_phase3_common_v1"
+# Default roots — unchanged from the previously validated Phase-3 runs.
+DEFAULT_FEATURES_1M_ACD_V1 = REPO_ROOT / "data/parquet/features_1m_acd_v1"
+DEFAULT_FEATURES_1M_ACD_V1_ENCODED = REPO_ROOT / "data/parquet/features_1m_acd_v1_encoded"
+DEFAULT_TARGETS_1M = REPO_ROOT / "data/parquet/targets_1m"
+DEFAULT_TARGETS_1M_PHASE3_VIEW = REPO_ROOT / "data/parquet/targets_1m_phase3_common_v1"
+DEFAULT_SEQUENCE_INDEX_ROOT = REPO_ROOT / "data/parquet/sequence_index_phase3_common_v1"
+DEFAULT_MODEL_MATRIX_ROOT = REPO_ROOT / "data/parquet/model_matrix_phase3_common_v1"
 
 SEQUENCE_SHAPE = (
     "sequence_length=120/horizon=15m/scope=continuous/stride=1/"
     "sessions=premarket+regular+aftermarket"
 )
-CONTROL_MATRIX_ROOT = MODEL_MATRIX_ROOT / SEQUENCE_SHAPE / "feature_set=core_v1"
-ACD_MATRIX_ROOT = MODEL_MATRIX_ROOT / SEQUENCE_SHAPE / "feature_set=core_v1_acd_v1"
 
 FORBIDDEN_COLUMNS = {
     "or_width_class", "buffer_width_class", "spacing_class", "environment_id",
@@ -62,17 +68,29 @@ FORBIDDEN_COLUMNS = {
 }
 
 
+def control_matrix_root(model_matrix_root: Path) -> Path:
+    return model_matrix_root / SEQUENCE_SHAPE / "feature_set=core_v1"
+
+
+def acd_matrix_root(model_matrix_root: Path) -> Path:
+    return model_matrix_root / SEQUENCE_SHAPE / "feature_set=core_v1_acd_v1"
+
+
 def _run(cmd: list) -> None:
     printable = " ".join(str(c) for c in cmd)
     print(f"+ {printable[:300]}{'...' if len(printable) > 300 else ''}")
     subprocess.run([str(c) for c in cmd], check=True, cwd=REPO_ROOT)
 
 
-def build_targets_view() -> None:
-    """Partition-matching, row-count-matching read-only view of targets_1m
-    restricted to features_1m_acd_v1's own months (sequences.py requires
-    exact feature/target partition-set AND per-month row-count parity).
-    targets_1m itself is never read-write-modified: months entirely inside
+def build_targets_view(
+    features_root: Path,
+    targets_root: Path,
+    targets_view_root: Path,
+) -> None:
+    """Partition-matching, row-count-matching read-only view of targets_root
+    restricted to features_root's own months (sequences.py requires exact
+    feature/target partition-set AND per-month row-count parity).
+    targets_root itself is never read-write-modified: months entirely inside
     the common range are symlinked (zero duplication); the one boundary
     month that straddles common_modeling_start is materialized as a real
     row-filtered copy (a symlink can't filter rows)."""
@@ -80,33 +98,30 @@ def build_targets_view() -> None:
     feature_months = sorted(
         (Path(p).parts[-3], Path(p).parts[-2])
         for p in glob.glob(
-            str(FEATURES_1M_ACD_V1 / f"symbol={SYMBOL}" / "year=*/month=*/*.parquet")
+            str(features_root / f"symbol={SYMBOL}" / "year=*/month=*/*.parquet")
         )
     )
     if not feature_months:
         raise FileNotFoundError(
-            f"No features_1m_acd_v1 partitions found under {FEATURES_1M_ACD_V1}."
+            f"No features_1m_acd_v1 partitions found under {features_root}."
         )
 
     for year_dir, month_dir in feature_months:
-        src = TARGETS_1M / f"symbol={SYMBOL}" / year_dir / month_dir / "part.parquet"
-        dst_dir = TARGETS_1M_PHASE3_VIEW / f"symbol={SYMBOL}" / year_dir / month_dir
+        src = targets_root / f"symbol={SYMBOL}" / year_dir / month_dir / "part.parquet"
+        dst_dir = targets_view_root / f"symbol={SYMBOL}" / year_dir / month_dir
         dst = dst_dir / "part.parquet"
         dst_dir.mkdir(parents=True, exist_ok=True)
         if dst.exists() or dst.is_symlink():
             continue
 
         feature_file = (
-            FEATURES_1M_ACD_V1 / f"symbol={SYMBOL}" / year_dir / month_dir / "part.parquet"
+            features_root / f"symbol={SYMBOL}" / year_dir / month_dir / "part.parquet"
         )
         feature_rows = pq.ParquetFile(feature_file).metadata.num_rows
         target_rows = pq.ParquetFile(src).metadata.num_rows
 
         if feature_rows == target_rows:
-            rel = (
-                Path("../../../../") / "targets_1m" / f"symbol={SYMBOL}"
-                / year_dir / month_dir / "part.parquet"
-            )
+            rel = Path(os.path.relpath(src, start=dst.parent))
             dst.symlink_to(rel)
         else:
             feature_dates = pq.ParquetFile(feature_file).read(
@@ -122,34 +137,42 @@ def build_targets_view() -> None:
             )
 
 
-def build_sequence_index() -> None:
+def build_sequence_index(
+    features_root: Path,
+    targets_view_root: Path,
+    sequence_index_root: Path,
+) -> None:
     _run([
         sys.executable, SRC / "sequences.py",
-        "--features-root", FEATURES_1M_ACD_V1,
-        "--targets-root", TARGETS_1M_PHASE3_VIEW,
-        "--output-root", SEQUENCE_INDEX_ROOT,
+        "--features-root", features_root,
+        "--targets-root", targets_view_root,
+        "--output-root", sequence_index_root,
         "--symbol", SYMBOL,
         "--config", CONFIG_PATH,
     ])
 
 
-def build_encoded_acd_features() -> dict:
+def build_encoded_acd_features(
+    sequence_index_root: Path,
+    features_root: Path,
+    encoded_features_root: Path,
+) -> dict:
     vocabularies = fit_categorical_vocabularies(
-        sequence_index_root=SEQUENCE_INDEX_ROOT,
-        features_root=FEATURES_1M_ACD_V1,
+        sequence_index_root=sequence_index_root,
+        features_root=features_root,
         symbol=SYMBOL,
     )
     manifest = build_categorical_encoding_manifest(vocabularies)
 
-    FEATURES_1M_ACD_V1_ENCODED.mkdir(parents=True, exist_ok=True)
-    manifest_path = FEATURES_1M_ACD_V1_ENCODED / "categorical_encoding_manifest.json"
+    encoded_features_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = encoded_features_root / "categorical_encoding_manifest.json"
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
     print(f"wrote {manifest_path}")
 
     apply_categorical_encoding(
-        features_root=FEATURES_1M_ACD_V1,
-        output_root=FEATURES_1M_ACD_V1_ENCODED,
+        features_root=features_root,
+        output_root=encoded_features_root,
         manifest=manifest,
         symbol=SYMBOL,
         parquet_compression="zstd",
@@ -157,8 +180,8 @@ def build_encoded_acd_features() -> dict:
     return manifest
 
 
-def _load_manifest() -> dict:
-    manifest_path = FEATURES_1M_ACD_V1_ENCODED / "categorical_encoding_manifest.json"
+def _load_manifest(encoded_features_root: Path) -> dict:
+    manifest_path = encoded_features_root / "categorical_encoding_manifest.json"
     with open(manifest_path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -178,12 +201,16 @@ def derive_acd_features(manifest: dict) -> list:
     return list(DEFAULT_FEATURES) + numeric + onehot
 
 
-def build_control_model_matrix() -> None:
+def build_control_model_matrix(
+    features_root: Path,
+    sequence_index_root: Path,
+    model_matrix_root: Path,
+) -> None:
     _run([
         sys.executable, SRC / "model_matrix.py",
-        "--features-root", FEATURES_1M_ACD_V1,
-        "--sequence-root", SEQUENCE_INDEX_ROOT,
-        "--output-root", MODEL_MATRIX_ROOT,
+        "--features-root", features_root,
+        "--sequence-root", sequence_index_root,
+        "--output-root", model_matrix_root,
         "--symbol", SYMBOL,
         "--feature-set", "core_v1",
         "--features", *DEFAULT_FEATURES,
@@ -191,13 +218,18 @@ def build_control_model_matrix() -> None:
     ])
 
 
-def build_acd_model_matrix(manifest: dict) -> None:
+def build_acd_model_matrix(
+    encoded_features_root: Path,
+    sequence_index_root: Path,
+    model_matrix_root: Path,
+    manifest: dict,
+) -> None:
     features = derive_acd_features(manifest)
     _run([
         sys.executable, SRC / "model_matrix.py",
-        "--features-root", FEATURES_1M_ACD_V1_ENCODED,
-        "--sequence-root", SEQUENCE_INDEX_ROOT,
-        "--output-root", MODEL_MATRIX_ROOT,
+        "--features-root", encoded_features_root,
+        "--sequence-root", sequence_index_root,
+        "--output-root", model_matrix_root,
         "--symbol", SYMBOL,
         "--feature-set", "core_v1_acd_v1",
         "--features", *features,
@@ -213,7 +245,7 @@ def _load_sequence_frame(root: Path, columns: list) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def run_validation() -> bool:
+def run_validation(control_root: Path, acd_root: Path, encoded_features_root: Path) -> bool:
     """The 14 checks in references/paired-universe-test-contract.md."""
 
     checks: list = []
@@ -229,10 +261,10 @@ def run_validation() -> bool:
         "target_return_bps", "target_log_return", "target_direction",
         "target_same_session", "target_same_trading_date",
     ]
-    control = _load_sequence_frame(CONTROL_MATRIX_ROOT, key_cols).sort_values(
+    control = _load_sequence_frame(control_root, key_cols).sort_values(
         "window_end_datetime"
     ).reset_index(drop=True)
-    acd = _load_sequence_frame(ACD_MATRIX_ROOT, key_cols).sort_values(
+    acd = _load_sequence_frame(acd_root, key_cols).sort_values(
         "window_end_datetime"
     ).reset_index(drop=True)
 
@@ -274,8 +306,8 @@ def run_validation() -> bool:
           f"control_min={control['trading_date'].min()} acd_min={acd['trading_date'].min()}")
 
     # 9-11. feature schema checks via scaler.json
-    control_scaler = json.load(open(CONTROL_MATRIX_ROOT / "scaler.json"))
-    acd_scaler = json.load(open(ACD_MATRIX_ROOT / "scaler.json"))
+    control_scaler = json.load(open(control_root / "scaler.json"))
+    acd_scaler = json.load(open(acd_root / "scaler.json"))
     control_features = set(control_scaler["feature_names"])
     acd_features = set(acd_scaler["feature_names"])
 
@@ -283,7 +315,7 @@ def run_validation() -> bool:
           not any(f.startswith("f_sm_") for f in control_features))
     incremental = acd_features - control_features
     expected_incremental = len(ACD_NUMERIC_BOOLEAN_COLUMNS) + sum(
-        len(e["encoded_columns"]) for e in _load_manifest().values()
+        len(e["encoded_columns"]) for e in _load_manifest(encoded_features_root).values()
     )
     check("10. ACD has exactly the approved incremental columns",
           control_features <= acd_features
@@ -302,7 +334,7 @@ def run_validation() -> bool:
     # 13. no unexpected NaN/inf in the final numeric matrix
     import numpy as np
     nan_ok = True
-    for root in (CONTROL_MATRIX_ROOT, ACD_MATRIX_ROOT):
+    for root in (control_root, acd_root):
         rows_files = sorted(glob.glob(str(root / "rows" / "**" / "*.parquet"), recursive=True))
         sample_file = rows_files[len(rows_files) // 2]
         sample = pq.ParquetFile(sample_file).read().to_pandas()
@@ -332,32 +364,45 @@ def main() -> int:
         choices=["prepare", "control", "acd", "validate", "all"],
         default="all",
     )
+    parser.add_argument("--features-root", type=Path, default=DEFAULT_FEATURES_1M_ACD_V1)
+    parser.add_argument("--targets-root", type=Path, default=DEFAULT_TARGETS_1M)
+    parser.add_argument("--targets-view-root", type=Path, default=DEFAULT_TARGETS_1M_PHASE3_VIEW)
+    parser.add_argument("--sequence-index-root", type=Path, default=DEFAULT_SEQUENCE_INDEX_ROOT)
+    parser.add_argument("--model-matrix-root", type=Path, default=DEFAULT_MODEL_MATRIX_ROOT)
+    parser.add_argument("--encoded-features-root", type=Path, default=DEFAULT_FEATURES_1M_ACD_V1_ENCODED)
     args = parser.parse_args()
+
+    control_root = control_matrix_root(args.model_matrix_root)
+    acd_root = acd_matrix_root(args.model_matrix_root)
 
     manifest = None
 
     if args.mode in ("prepare", "all"):
-        build_targets_view()
-        build_sequence_index()
-        manifest = build_encoded_acd_features()
+        build_targets_view(args.features_root, args.targets_root, args.targets_view_root)
+        build_sequence_index(args.features_root, args.targets_view_root, args.sequence_index_root)
+        manifest = build_encoded_acd_features(
+            args.sequence_index_root, args.features_root, args.encoded_features_root
+        )
 
     if args.mode in ("control", "all"):
-        build_control_model_matrix()
+        build_control_model_matrix(args.features_root, args.sequence_index_root, args.model_matrix_root)
 
     if args.mode in ("acd", "all"):
         if manifest is None:
-            manifest = _load_manifest()
-        build_acd_model_matrix(manifest)
+            manifest = _load_manifest(args.encoded_features_root)
+        build_acd_model_matrix(
+            args.encoded_features_root, args.sequence_index_root, args.model_matrix_root, manifest
+        )
 
     passed = True
     if args.mode in ("validate", "all"):
-        passed = run_validation()
+        passed = run_validation(control_root, acd_root, args.encoded_features_root)
 
     print("\nOutput paths:")
-    print(f"  sequence_index:    {SEQUENCE_INDEX_ROOT}")
-    print(f"  encoded features:  {FEATURES_1M_ACD_V1_ENCODED}")
-    print(f"  CONTROL matrix:    {CONTROL_MATRIX_ROOT}")
-    print(f"  ACD matrix:        {ACD_MATRIX_ROOT}")
+    print(f"  sequence_index:    {args.sequence_index_root}")
+    print(f"  encoded features:  {args.encoded_features_root}")
+    print(f"  CONTROL matrix:    {control_root}")
+    print(f"  ACD matrix:        {acd_root}")
 
     return 0 if passed else 1
 

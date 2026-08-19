@@ -1,0 +1,51 @@
+# Milestone 1 — Concourse task config, Phase 03: CONTROL-vs-ACD preparation.
+#
+# Standalone Concourse TASK config, invoked from ci/concourse/pipeline.yml's
+# `phase03-prepare-control-vs-acd` job (gated on phase02 via `passed:`). See
+# pipeline.yml for the real resource/dependency wiring.
+#
+# All computation/validation lives in scripts/run_phase3_control_vs_acd.py
+# (which orchestrates src/sequences.py, src/model_matrix.py,
+# src/state_machine_features.py). This file only maps Concourse's fixed
+# input/output directory names onto that script's --features-root/
+# --targets-root/--sequence-index-root/--model-matrix-root/
+# --encoded-features-root flags and invokes it — that mapping is artifact
+# wiring, not computation. `--mode all` both regenerates and validates
+# (26/26 paired-universe checks) in one call.
+
+platform: linux
+
+image_resource:
+  type: registry-image
+  source: { repository: python, tag: "3.11-slim" }
+
+inputs:
+  - name: market-ml-repo
+  - name: features-1m-acd-v1-data
+  - name: targets-1m-data
+
+outputs:
+  - name: sequence-index-phase3-out
+  - name: model-matrix-phase3-out
+  - name: features-1m-acd-v1-encoded-out
+  # Internal scratch artifact (mostly symlinks into targets-1m-data, plus one
+  # real row-filtered boundary-month copy). Not `put` to a persistent
+  # resource by pipeline.yml — cheaply regenerated on every run.
+  - name: targets-1m-phase3-view-out
+
+run:
+  path: bash
+  dir: market-ml-repo
+  args:
+    - -c
+    - |
+      set -euo pipefail
+      pip install --quiet -r requirements.txt
+
+      python scripts/run_phase3_control_vs_acd.py --mode all \
+        --features-root ../features-1m-acd-v1-data \
+        --targets-root ../targets-1m-data \
+        --targets-view-root ../targets-1m-phase3-view-out \
+        --sequence-index-root ../sequence-index-phase3-out \
+        --model-matrix-root ../model-matrix-phase3-out \
+        --encoded-features-root ../features-1m-acd-v1-encoded-out

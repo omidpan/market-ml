@@ -1,0 +1,33 @@
+# Milestone 1 — Concourse task config, Phase 01: contract/design validation.
+#
+# Standalone Concourse TASK config (platform/image_resource/inputs/run) —
+# not a pipeline. It is invoked from ci/concourse/pipeline.yml's
+# `phase01-contract-validation` job via `task: ... file: ...`. See
+# pipeline.yml for the single real pipeline entrypoint and the
+# Phase 01 -> 02 -> 03 -> 04 dependency wiring (`passed:` constraints).
+#
+# All validation logic lives in persistent repository Python
+# (scripts/validate_phase1_contract.py, tests/test_state_machine_features.py).
+# This file only invokes those entry points and relies on their exit status
+# for PASS/FAIL; it contains no assertions of its own.
+
+platform: linux
+
+image_resource:
+  type: registry-image
+  source: { repository: python, tag: "3.11-slim" }
+
+inputs:
+  - name: market-ml-repo
+
+run:
+  path: bash
+  dir: market-ml-repo
+  args:
+    - -c
+    - |
+      set -euo pipefail
+      pip install --quiet -r requirements.txt
+      python scripts/validate_phase1_contract.py
+      pytest tests/test_state_machine_features.py \
+        -k "forbidden or provenance or common_modeling_start" -v

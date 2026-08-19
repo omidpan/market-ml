@@ -1,0 +1,61 @@
+# Milestone 1 — Concourse task config, Phase 02: state-machine feature layer.
+#
+# Standalone Concourse TASK config, invoked from ci/concourse/pipeline.yml's
+# `phase02-build-state-machine-features` job (gated on phase01 via
+# `passed:`). See pipeline.yml for the real resource/dependency wiring and
+# for why `features-1m-data`/`acd-experiments-local-data` are explicit
+# Concourse inputs rather than assumed-present local paths.
+#
+# Flow: Python Phase-02 build entry point -> regenerate/validate Phase-02
+# outputs -> targeted pytest -> PASS/FAIL. All computation and output
+# validation live in scripts/run_phase2_state_machine_features.py (which
+# orchestrates src/state_machine_features.py) and
+# tests/test_state_machine_features.py. This file only invokes them and maps
+# Concourse's fixed input/output directory names onto that script's
+# `--features-root`/`--acd-root`/`--state-machine-output-root`/
+# `--combined-output-root` flags — that mapping is artifact wiring, not
+# computation.
+#
+# Declared outputs (state-machine-features-1m-out, features-1m-acd-v1-out)
+# are `put` to persistent resources by pipeline.yml so Phase 03 can `get`
+# them as its own inputs.
+
+platform: linux
+
+image_resource:
+  type: registry-image
+  source: { repository: python, tag: "3.11-slim" }
+
+inputs:
+  - name: market-ml-repo
+  - name: features-1m-data
+  - name: acd-experiments-local-data
+
+outputs:
+  - name: state-machine-features-1m-out
+  - name: features-1m-acd-v1-out
+
+run:
+  path: bash
+  dir: market-ml-repo
+  args:
+    - -c
+    - |
+      set -euo pipefail
+      pip install --quiet -r requirements.txt
+
+      python scripts/run_phase2_state_machine_features.py --mode all \
+        --features-root ../features-1m-data \
+        --acd-root ../acd-experiments-local-data \
+        --state-machine-output-root ../state-machine-features-1m-out \
+        --combined-output-root ../features-1m-acd-v1-out
+
+      # Known limitation, not solved in this pass: this test file assumes
+      # the full local Parquet history at the default data/parquet/*
+      # paths and does not yet accept root-path overrides, so it is only
+      # meaningfully runnable here once the container also stages that
+      # default layout (e.g. by symlinking the mounted inputs/outputs to
+      # data/parquet/features_1m, data/parquet/state_machine_features_1m,
+      # data/parquet/features_1m_acd_v1 before this step). Left as an
+      # explicit follow-up rather than silently expanded in this change.
+      # pytest tests/test_state_machine_features.py -v

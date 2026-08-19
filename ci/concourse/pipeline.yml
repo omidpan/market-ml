@@ -1,0 +1,232 @@
+# Milestone 1 — Concourse pipeline entrypoint.
+#
+# This is the ONE real Concourse pipeline definition. ci/concourse/phase01.yml
+# .. phase04.yml are standalone Concourse TASK configs (platform/image_resource
+# /inputs/outputs/run only — no `plan:`/`resources:` of their own); this file
+# is what actually declares resources, jobs, and the Phase 01 -> 02 -> 03 -> 04
+# dependency order via `passed:` constraints, and references each phase's task
+# file with `task: ... file: market-ml-repo/ci/concourse/phaseNN.yml`.
+#
+# Set with:
+#   fly -t <target> set-pipeline -p market-ml-acd-experiment \
+#     -c ci/concourse/pipeline.yml -l ci/concourse/vars.yml
+#
+# YAML here is orchestration/artifact-wiring only. All computation lives in
+# persistent repository Python (scripts/*.py, src/*.py, tests/*.py) invoked
+# by the phaseNN.yml task files.
+#
+# --- Data-flow design ------------------------------------------------------
+#
+# Concourse task containers are ephemeral and do NOT share this Mac's
+# filesystem/home directory. Every large derived-data tree Phase 02+ reads or
+# writes must therefore be an explicit Concourse resource (`get`/`put`), never
+# a bare local path assumed to already exist inside the worker container.
+#
+# Two data trees are NOT produced by this pipeline and must already exist as
+# persistent volumes reachable by the resource type below before Phase 02 can
+# run:
+#   - data/parquet/features_1m        (market-ml's own base 1-minute causal
+#                                       feature store; produced by the
+#                                       upstream canonicalize/regularize/
+#                                       resample/features pipeline stages,
+#                                       out of scope here)
+#   - $ACD_EXPERIMENTS_LOCAL           (external, read-only ACD research
+#                                       artifacts, e.g. .../nvda/<config_id>/...;
+#                                       never produced or modified by market-ml)
+#
+# `local-data-volume` below is a PLACEHOLDER resource type: it names the
+# contract (a resource that gets/puts a named directory tree) but its
+# concrete backing (an NFS/host bind-mount shared by the Concourse workers,
+# or a local S3-compatible bucket such as MinIO) is a Concourse deployment
+# decision for the user to make when standing up worker(s) that can reach
+# this data — it is infrastructure provisioning, not Python/YAML generation,
+# and is therefore out of scope for Claude to choose or build unilaterally.
+# `fly validate-pipeline` accepts this file as-is; `fly set-pipeline` will
+# additionally require `((local_data_volume_repository))` to resolve to a
+# real, reachable resource-type image before the pipeline can run.
+#
+# Known limitation, not solved in this pass: tests/test_state_machine_features.py
+# was written for local execution against the full local Parquet history and
+# is not yet container-portable (it does not accept root-path overrides).
+# Phase 02's task still invokes a targeted subset of it for now; making the
+# full suite portable is flagged as separate follow-up work, not silently
+# expanded into this scope.
+#
+# Chain:
+#   features-1m-data + acd-experiments-local-data
+#     -> phase02 (scripts/run_phase2_state_machine_features.py)
+#     -> state-machine-features-1m-data, features-1m-acd-v1-data
+#     -> phase03 (scripts/run_phase3_control_vs_acd.py)
+#     -> sequence-index-phase3-data, model-matrix-phase3-data, features-1m-acd-v1-encoded-data
+#     -> phase04 (scripts/run_phase4_control_vs_acd.py)
+
+resource_types:
+  - name: local-data-volume
+    type: registry-image
+    source:
+      repository: ((local_data_volume_repository))
+      tag: ((local_data_volume_tag))
+
+resources:
+  - name: market-ml-repo
+    type: git
+    source:
+      uri: ((market_ml_git_uri))
+      branch: ((market_ml_git_branch))
+      private_key: ((market_ml_git_private_key))
+
+  # Pre-existing, read-only inputs (not produced by this pipeline).
+  - name: features-1m-data
+    type: local-data-volume
+    source: { path: data/parquet/features_1m }
+
+  - name: targets-1m-data
+    type: local-data-volume
+    source: { path: data/parquet/targets_1m }
+
+  # Mounted at the parent of `nvda/` — src/state_machine_features.py resolves
+  # the run root itself as {acd_root}/{symbol}/{config_id}/... (main():
+  # `acd_root = Path.home() / "acd_experiments_local"` by default, then
+  # `acd_run_root = acd_root / symbol / config_id`), so --acd-root must point
+  # at this directory's parent, not at nvda/ itself.
+  - name: acd-experiments-local-data
+    type: local-data-volume
+    source: { path: ((acd_experiments_local_root)), read_only: true }
+
+  # Phase-02 persistent output artifacts (consumed by Phase 03).
+  - name: state-machine-features-1m-data
+    type: local-data-volume
+    source: { path: data/parquet/state_machine_features_1m }
+
+  - name: features-1m-acd-v1-data
+    type: local-data-volume
+    source: { path: data/parquet/features_1m_acd_v1 }
+
+  # Phase-03 persistent output artifacts (consumed by Phase 04).
+  - name: sequence-index-phase3-data
+    type: local-data-volume
+    source: { path: data/parquet/sequence_index_phase3_common_v1 }
+
+  - name: model-matrix-phase3-data
+    type: local-data-volume
+    source: { path: data/parquet/model_matrix_phase3_common_v1 }
+
+  - name: features-1m-acd-v1-encoded-data
+    type: local-data-volume
+    source: { path: data/parquet/features_1m_acd_v1_encoded }
+
+  # Phase-04 persistent output artifacts: the reproducible, Colab-ready
+  # inputs a later (human-approved, Colab-GPU) training run needs — the
+  # shared label-policy artifact and the two generated per-variant configs.
+  # Concourse never trains; see phase04.yml and the phase04 job below for
+  # why train-control/train-acd are intentionally not wired here.
+  - name: label-policy-phase4-data
+    type: local-data-volume
+    source: { path: data/parquet/label_policy_phase4_common_v1 }
+
+  - name: label-policy-reports-phase4-data
+    type: local-data-volume
+    source: { path: reports/label_policy_phase4 }
+
+  # A dedicated Phase-4-owned subdirectory, NOT the shared config/generated/
+  # directory itself: this resource's `put` only ever writes
+  # pipeline_phase4_control.yaml/pipeline_phase4_acd.yaml, and only ever
+  # into this subtree, so it can never replace or delete unrelated files
+  # under config/generated/. Local (non-Concourse) runs of
+  # run_phase4_control_vs_acd.py keep their normal default
+  # (--generated-config-dir defaults to config/generated directly, writing
+  # there unchanged) — this Concourse-persisted copy is intentionally a
+  # separate location from that local default.
+  - name: generated-configs-phase4-data
+    type: local-data-volume
+    source: { path: config/generated/phase4 }
+
+jobs:
+  - name: phase01-contract-validation
+    plan:
+      - get: market-ml-repo
+        trigger: true
+      - task: phase01-validate-contract
+        file: market-ml-repo/ci/concourse/phase01.yml
+
+  - name: phase02-build-state-machine-features
+    plan:
+      - get: market-ml-repo
+        trigger: true
+        passed: [phase01-contract-validation]
+      - get: features-1m-data
+      - get: acd-experiments-local-data
+      - task: phase02-build-and-validate
+        file: market-ml-repo/ci/concourse/phase02.yml
+        input_mapping:
+          market-ml-repo: market-ml-repo
+          features-1m-data: features-1m-data
+          acd-experiments-local-data: acd-experiments-local-data
+        output_mapping:
+          state-machine-features-1m-out: state-machine-features-1m-data
+          features-1m-acd-v1-out: features-1m-acd-v1-data
+      - put: state-machine-features-1m-data
+        params: { path: state-machine-features-1m-data }
+      - put: features-1m-acd-v1-data
+        params: { path: features-1m-acd-v1-data }
+
+  - name: phase03-prepare-control-vs-acd
+    plan:
+      - get: market-ml-repo
+        trigger: true
+        passed: [phase02-build-state-machine-features]
+      - get: features-1m-acd-v1-data
+        passed: [phase02-build-state-machine-features]
+      - get: targets-1m-data
+      - task: phase03-build-and-validate
+        file: market-ml-repo/ci/concourse/phase03.yml
+        input_mapping:
+          market-ml-repo: market-ml-repo
+          features-1m-acd-v1-data: features-1m-acd-v1-data
+          targets-1m-data: targets-1m-data
+        output_mapping:
+          sequence-index-phase3-out: sequence-index-phase3-data
+          model-matrix-phase3-out: model-matrix-phase3-data
+          features-1m-acd-v1-encoded-out: features-1m-acd-v1-encoded-data
+      - put: sequence-index-phase3-data
+        params: { path: sequence-index-phase3-data }
+      - put: model-matrix-phase3-data
+        params: { path: model-matrix-phase3-data }
+      - put: features-1m-acd-v1-encoded-data
+        params: { path: features-1m-acd-v1-encoded-data }
+
+  - name: phase04-prepare-control-vs-acd
+    plan:
+      - get: market-ml-repo
+        trigger: true
+        passed: [phase03-prepare-control-vs-acd]
+      - get: model-matrix-phase3-data
+        passed: [phase03-prepare-control-vs-acd]
+      - get: features-1m-acd-v1-encoded-data
+        passed: [phase03-prepare-control-vs-acd]
+      - task: phase04-labels-preflight-validate
+        file: market-ml-repo/ci/concourse/phase04.yml
+        input_mapping:
+          market-ml-repo: market-ml-repo
+          model-matrix-phase3-data: model-matrix-phase3-data
+          features-1m-acd-v1-encoded-data: features-1m-acd-v1-encoded-data
+        output_mapping:
+          label-policy-phase4-out: label-policy-phase4-data
+          label-policy-reports-phase4-out: label-policy-reports-phase4-data
+          generated-configs-phase4-out: generated-configs-phase4-data
+      - put: label-policy-phase4-data
+        params: { path: label-policy-phase4-data }
+      - put: label-policy-reports-phase4-data
+        params: { path: label-policy-reports-phase4-data }
+      - put: generated-configs-phase4-data
+        params: { path: generated-configs-phase4-data }
+
+  # No phase04-train-control / phase04-train-acd jobs exist, and none
+  # should be added. Actual LSTM training is Google Colab GPU ONLY — it
+  # must never run on this machine, in Claude Code, or on a Concourse
+  # worker. scripts/run_phase4_control_vs_acd.py's `train-control`/
+  # `train-acd` modes remain available for a later, separately approved,
+  # human-invoked Colab run to call directly; Concourse never calls them.
+  # A later comparison step consuming Colab-produced model/results is not
+  # solved here — out of scope for the Phase-04 pre-training artifact
+  # contract established by this job.

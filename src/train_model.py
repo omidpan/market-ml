@@ -1366,6 +1366,21 @@ def parse_args():
     )
 
     p.add_argument(
+        "--label-policy-feature-set",
+        default=None,
+        help=(
+            "Feature-set identity to validate the label-policy manifest "
+            "against, if different from this run's own --config feature_set. "
+            "Default: unset, which validates against this run's own "
+            "feature_set (unchanged behavior). Use only when a label-policy "
+            "artifact was deliberately built once against a different "
+            "feature_set's sequence endpoints that are proven row-identical "
+            "to this run's own sequence universe (e.g. a shared paired "
+            "CONTROL/ACD experiment)."
+        ),
+    )
+
+    p.add_argument(
         "--output-root",
         type=Path,
     )
@@ -1562,7 +1577,7 @@ def main():
             args.label_policy_root,
             sequences,
             address,
-            feature_set,
+            args.label_policy_feature_set or feature_set,
             cfg,
             symbol,
         )
