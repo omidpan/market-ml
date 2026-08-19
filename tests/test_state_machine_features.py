@@ -10,11 +10,13 @@ sys.path.insert(
 )
 
 from state_machine_features import (
+    COMMON_MODELING_START,
     ENVIRONMENT_COLUMN_RENAME,
     REGIME_COLUMN_RENAME,
     _read_acd_table,
     _read_features_1m,
     _to_market_ml_timestamp,
+    build_combined_feature_table,
     build_state_machine_features_1m,
     validate_source_identity,
 )
@@ -157,9 +159,12 @@ def test_one_to_one_join_cardinality():
     )
 
 
-# --- 2. Source identity (full history — the safety-critical check) ---
+# --- 2. Source identity (approved common overlapping range only —
+#         trading_date >= common_modeling_start; the ACD tree itself starts
+#         ~2019-12-23, before the approved range, so a true full-history
+#         comparison would include dates outside the approved contract) ---
 
-def test_ohlcv_identity_matched_rows_full_history():
+def test_ohlcv_identity_matched_rows_common_range():
     acd_run_root = ACD_ROOT / SYMBOL / CONFIG_ID
     state_trace = _read_acd_table(
         acd_run_root,
@@ -172,7 +177,12 @@ def test_ohlcv_identity_matched_rows_full_history():
     state_trace["datetime"] = _to_market_ml_timestamp(
         state_trace["timestamp"], TIMEZONE
     )
-    base = _read_features_1m(FEATURES_ROOT, SYMBOL)
+    base = _read_features_1m(
+        FEATURES_ROOT, SYMBOL, start_date=COMMON_MODELING_START
+    )
+    state_trace = state_trace[
+        state_trace["datetime"].between(base["datetime"].min(), base["datetime"].max())
+    ]
 
     report = validate_source_identity(state_trace, base)
 
@@ -283,3 +293,110 @@ def test_combined_schema_is_superset_of_base_metadata_columns():
         "trading_date", "session", "symbol", "source_id",
     }
     assert required_for_sequences <= set(built.columns)
+
+
+# --- build_combined_feature_table: real end-to-end test, using a window
+#     that straddles common_modeling_start (2020-01-03) so the "no
+#     pre-common-start rows" behavior is actually exercised. ---
+
+_BOUNDARY_START = pd.Timestamp("2019-12-15").date()
+_BOUNDARY_END = pd.Timestamp("2020-01-10").date()
+
+_cached_combined_build = None
+
+
+def _narrow_combined_build():
+    global _cached_combined_build
+
+    if _cached_combined_build is None:
+        import glob
+        import tempfile
+
+        import pyarrow.parquet as pq
+
+        with tempfile.TemporaryDirectory() as sm_dir, \
+                tempfile.TemporaryDirectory() as combined_dir:
+            build_state_machine_features_1m(
+                features_root=FEATURES_ROOT,
+                acd_root=ACD_ROOT,
+                output_root=Path(sm_dir),
+                symbol=SYMBOL,
+                config_id=CONFIG_ID,
+                regime_config_id=REGIME_CONFIG_ID,
+                regime_policy_name=POLICY_NAME,
+                regime_policy_version=POLICY_VERSION,
+                timezone=TIMEZONE,
+                parquet_compression="zstd",
+                start_date=_BOUNDARY_START,
+                end_date=_BOUNDARY_END,
+            )
+            build_combined_feature_table(
+                features_root=FEATURES_ROOT,
+                state_machine_root=Path(sm_dir),
+                output_root=Path(combined_dir),
+                symbol=SYMBOL,
+                config_id=CONFIG_ID,
+                regime_config_id=REGIME_CONFIG_ID,
+                parquet_compression="zstd",
+                start_date=_BOUNDARY_START,
+                end_date=_BOUNDARY_END,
+            )
+            written = sorted(
+                glob.glob(
+                    str(Path(combined_dir) / "**" / "*.parquet"), recursive=True
+                )
+            )
+            frames = [pq.ParquetFile(f).read().to_pandas() for f in written]
+            _cached_combined_build = pd.concat(frames, ignore_index=True)
+
+    return _cached_combined_build
+
+
+def test_combined_row_count_matches_control_common_universe():
+    combined = _narrow_combined_build()
+    control = _read_features_1m(
+        FEATURES_ROOT, SYMBOL,
+        start_date=COMMON_MODELING_START, end_date=_BOUNDARY_END,
+    )
+    assert len(combined) == len(control)
+
+
+def test_combined_timestamps_match_control_common_universe():
+    combined = _narrow_combined_build()
+    control = _read_features_1m(
+        FEATURES_ROOT, SYMBOL,
+        start_date=COMMON_MODELING_START, end_date=_BOUNDARY_END,
+    )
+    assert list(combined["datetime"]) == list(
+        control.sort_values("datetime")["datetime"]
+    )
+
+
+def test_combined_has_no_pre_common_start_rows():
+    combined = _narrow_combined_build()
+    assert (combined["trading_date"] >= COMMON_MODELING_START).all()
+    # The requested window starts 2019-12-15, well before
+    # common_modeling_start (2020-01-03) — confirm that boundary is
+    # actually exercised, not vacuously true because nothing was in range.
+    assert combined["trading_date"].min() < pd.Timestamp("2020-01-10").date()
+
+
+def test_combined_schema_is_core_v1_superset_plus_approved_acd_features():
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from model_matrix import DEFAULT_FEATURES
+
+    combined = _narrow_combined_build()
+
+    assert set(DEFAULT_FEATURES) <= set(combined.columns)
+    assert {"sm_available", "sm_env_available", "sm_regime_available"} <= set(
+        combined.columns
+    )
+    assert "acd_today_confirmed_count" in combined.columns
+    assert "acd_reliability_10d" in combined.columns
+
+    removed_fields = {
+        "acd_today_direction_score", "acd_today_resolved_success_count",
+        "acd_reliability_20d", "acd_direction_3d", "acd_whipsaw_score",
+    }
+    assert not (removed_fields & set(combined.columns))
+    assert not (FORBIDDEN_COLUMNS & set(combined.columns))

@@ -95,43 +95,18 @@ CONTEXT_COLUMNS = (
     "active_pending_signal_count",
     "active_bullish_signal_count",
     "active_bearish_signal_count",
-    "acd_today_direction_score",
+    # acd_today_* / rolling reliability fields: Phase 1 verification
+    # explicitly, individually tested only these four (monotonic-within-day
+    # for the two acd_today_* counters; constant-within-day/changes-across-
+    # days for acd_reliability_10d[+_n]) — see verify-state-machine-
+    # integration-contract report. Every other field in these two families
+    # shares the naming pattern but was NOT individually verified, and per
+    # "do not infer safety from field names" is deferred, not whitelisted,
+    # for this first Phase-2 build.
     "acd_today_confirmed_count",
-    "acd_today_resolved_success_count",
-    "acd_today_resolved_failure_count",
-    "acd_today_direction_flip_count",
     "acd_today_touch_count",
-    "acd_today_active_bar_count",
-    "acd_today_failure_rate",
-    "acd_today_invalidation_rate",
-    "acd_today_direction_flip_rate",
-    "acd_today_signal_density",
-    "acd_today_whipsaw_density_component",
-    "acd_today_whipsaw_score",
-    "acd_direction_3d",
-    "acd_direction_5d",
-    "acd_direction_ewma",
-    "acd_same_direction_streak",
     "acd_reliability_10d",
     "acd_reliability_10d_n",
-    "acd_reliability_20d",
-    "acd_reliability_20d_n",
-    "a_up_reliability",
-    "a_up_reliability_n",
-    "c_up_reliability",
-    "c_up_reliability_n",
-    "a_down_reliability",
-    "a_down_reliability_n",
-    "c_down_reliability",
-    "c_down_reliability_n",
-    "reversal_reliability",
-    "reversal_reliability_n",
-    "acd_resolved_signal_count",
-    "acd_failure_rate_10d",
-    "acd_failure_rate_20d",
-    "acd_signal_density_10d",
-    "acd_direction_flip_rate_10d",
-    "acd_whipsaw_score",
     "or_width_atr",
     "a_gap_atr",
     "c_gap_atr",
@@ -190,9 +165,19 @@ REGIME_COLUMN_RENAME = {
     "phase": "regime_phase",
 }
 
+REGIME_OUTPUT_COLUMNS = {
+    REGIME_COLUMN_RENAME.get(c, c) for c in REGIME_COLUMNS
+}
+
+# Regime-derived columns are gated by sm_regime_available (a regime row was
+# actually found for this timestamp/policy), never by sm_available alone —
+# regime_context_1min's own row existence is the authoritative signal, kept
+# separate from the state/context availability flags.
 BOOLEAN_GROUP_COLUMNS = {
     "sm_available": {
         "state_changed",
+    },
+    "sm_regime_available": {
         "opposite_or_touched", "opposite_a_confirmed", "opposite_c_confirmed",
         "regime_evidence_ambiguous",
     },
@@ -204,19 +189,34 @@ CATEGORICAL_GROUP_COLUMNS = {
         "acd_phase", "location_state", "acd_regime",
         "active_signal_type", "active_signal_level",
         "active_signal_direction", "active_signal_status",
+    },
+    "sm_regime_available": {
         "regime_id", "regime_direction", "regime_phase",
     },
 }
 NUMERIC_GROUP_COLUMNS = {
     "sm_available": (
-        set(STATE_TRACE_COLUMNS)
-        | set(CONTEXT_COLUMNS)
-        | {REGIME_COLUMN_RENAME.get(c, c) for c in REGIME_COLUMNS}
+        set(STATE_TRACE_COLUMNS) | set(CONTEXT_COLUMNS)
     )
     - CATEGORICAL_GROUP_COLUMNS["sm_available"]
     - BOOLEAN_GROUP_COLUMNS["sm_available"],
+    "sm_regime_available": (
+        REGIME_OUTPUT_COLUMNS
+        - CATEGORICAL_GROUP_COLUMNS["sm_regime_available"]
+        - BOOLEAN_GROUP_COLUMNS["sm_regime_available"]
+    ),
     "sm_env_available": set(ENVIRONMENT_COLUMN_RENAME.values()),
 }
+
+
+def _enforce_common_modeling_start(start_date):
+    """common_modeling_start (2020-01-03) is a hard floor, not merely a
+    default — a caller-supplied start_date earlier than this is clamped
+    up, never honored as-is."""
+
+    if start_date is None:
+        return COMMON_MODELING_START
+    return max(start_date, COMMON_MODELING_START)
 
 
 def _read_parquet_table(path: Path, columns: list[str] | None = None, *,
@@ -396,8 +396,7 @@ def build_state_machine_features_1m(
     start_date=None,
     end_date=None,
 ) -> list[Path]:
-    if start_date is None:
-        start_date = COMMON_MODELING_START
+    start_date = _enforce_common_modeling_start(start_date)
 
     base = _read_features_1m(
         features_root, symbol, start_date=start_date, end_date=end_date
@@ -480,6 +479,10 @@ def build_state_machine_features_1m(
     regime = regime.rename(columns=REGIME_COLUMN_RENAME)
 
     # --- left join: market-ml base universe is authoritative ---
+    # Strict join keys throughout: symbol + datetime for the 1-minute
+    # sources, symbol + trading_date/session_date for the daily source.
+    # validate= enforces the expected cardinality and raises loudly on any
+    # unexpected duplicate key rather than silently fanning out rows.
     merged = base[
         ["datetime", "prediction_time", "feature_available_at",
          "trading_date", "session", "symbol", "source_id"]
@@ -487,34 +490,47 @@ def build_state_machine_features_1m(
 
     merged = merged.merge(
         state_trace[
-            ["datetime", "opening_range_finalized", "zone_available",
+            ["symbol", "datetime", "opening_range_finalized", "zone_available",
              *STATE_TRACE_COLUMNS]
         ],
-        on="datetime",
+        on=["symbol", "datetime"],
         how="left",
+        validate="one_to_one",
     )
     merged = merged.merge(
-        context[["datetime", "acd_available", *CONTEXT_COLUMNS]],
-        on="datetime",
+        context[["symbol", "datetime", "acd_available", *CONTEXT_COLUMNS]],
+        on=["symbol", "datetime"],
         how="left",
-    )
-    merged = merged.merge(
-        regime[
-            ["datetime", *REGIME_COLUMN_RENAME.values(),
-             *[c for c in REGIME_COLUMNS if c not in REGIME_COLUMN_RENAME]]
-        ],
-        on="datetime",
-        how="left",
+        validate="one_to_one",
     )
 
-    # environment_daily: same trading_date only, then availability gate on
-    # or_finalized_at (never carry forward from a previous session).
+    regime_columns_to_merge = [
+        "symbol", "datetime", *REGIME_COLUMN_RENAME.values(),
+        *[c for c in REGIME_COLUMNS if c not in REGIME_COLUMN_RENAME],
+    ]
     merged = merged.merge(
-        environment[["session_date", "or_finalized_at", "atr_valid",
-                     "or_width_valid", *ENVIRONMENT_COLUMN_RENAME.values()]],
-        left_on="trading_date",
-        right_on="session_date",
+        regime[regime_columns_to_merge],
+        on=["symbol", "datetime"],
         how="left",
+        validate="one_to_one",
+        indicator="_regime_merge_indicator",
+    )
+    merged["sm_regime_available"] = (
+        merged["_regime_merge_indicator"] == "both"
+    )
+    merged = merged.drop(columns=["_regime_merge_indicator"])
+
+    # environment_daily: same symbol + trading_date/session_date only, then
+    # availability gate on or_finalized_at (never carry forward from a
+    # prior session). many_to_one: many 1-minute base rows per one daily
+    # environment row.
+    merged = merged.merge(
+        environment[["symbol", "session_date", "or_finalized_at", "atr_valid",
+                     "or_width_valid", *ENVIRONMENT_COLUMN_RENAME.values()]],
+        left_on=["symbol", "trading_date"],
+        right_on=["symbol", "session_date"],
+        how="left",
+        validate="many_to_one",
     )
 
     merged["sm_available"] = (
@@ -624,10 +640,17 @@ def build_combined_feature_table(
     config_id: str,
     regime_config_id: str,
     parquet_compression: str,
+    start_date=None,
+    end_date=None,
 ) -> list[Path]:
-    """Left-join state_machine_features_1m onto the full features_1m
-    causal store, producing a schema-superset combined table. features_1m
-    itself is never read-modified; this only writes a new tree."""
+    """Left-join state_machine_features_1m onto features_1m, producing a
+    schema-superset combined table restricted to
+    trading_date >= common_modeling_start (2020-01-03 by default) —
+    matching state_machine_features_1m's own universe. features_1m itself
+    is never read-modified; this only writes a new tree. No pre-common-
+    start partition is created."""
+
+    start_date = _enforce_common_modeling_start(start_date)
 
     sm_pattern = str(
         state_machine_root
@@ -652,7 +675,7 @@ def build_combined_feature_table(
     sm_join_columns = [
         c for c in sm_frame.columns
         if c not in ("prediction_time", "feature_available_at",
-                     "trading_date", "session", "symbol", "source_id")
+                     "trading_date", "session", "source_id")
     ]
 
     features_pattern = str(
@@ -668,16 +691,30 @@ def build_combined_feature_table(
     for file_path in feature_files:
         features_frame = _read_parquet_table(Path(file_path)).to_pandas()
 
+        features_frame = features_frame[
+            features_frame["trading_date"] >= start_date
+        ]
+        if end_date is not None:
+            features_frame = features_frame[
+                features_frame["trading_date"] <= end_date
+            ]
+
+        if len(features_frame) == 0:
+            # Entirely before common_modeling_start (or after end_date) —
+            # no combined partition is written for this month at all.
+            continue
+
         combined = features_frame.merge(
             sm_frame[sm_join_columns],
-            on="datetime",
+            on=["symbol", "datetime"],
             how="left",
+            validate="one_to_one",
         )
 
         if len(combined) != len(features_frame):
             raise AssertionError(
                 f"{file_path}: combined row count {len(combined)} != "
-                f"base features_1m row count {len(features_frame)} "
+                f"filtered base features_1m row count {len(features_frame)} "
                 "(row-universe invariance violated)."
             )
 
