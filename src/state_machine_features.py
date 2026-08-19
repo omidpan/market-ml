@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -207,6 +208,51 @@ NUMERIC_GROUP_COLUMNS = {
     ),
     "sm_env_available": set(ENVIRONMENT_COLUMN_RENAME.values()),
 }
+
+# All 14 nominal-typed ACD string columns. model_matrix.py requires every
+# selected feature to be float64-castable (feature_row_finite_mask), so
+# none of these can be passed to it directly. All 14 must be dropped from
+# any features tree consumed by model_matrix.py.
+ALL_CATEGORICAL_COLUMNS = tuple(sorted(
+    CATEGORICAL_GROUP_COLUMNS["sm_available"]
+    | CATEGORICAL_GROUP_COLUMNS["sm_regime_available"]
+))
+# regime_id is a per-episode identifier (10,541 distinct TRAIN values,
+# confirmed empirically), not a bounded nominal category, and is excluded
+# from one-hot encoding — it is dropped from the ACD feature set entirely
+# rather than encoded. The other 13 are genuine bounded categories (1-8
+# distinct TRAIN values each, confirmed empirically) and are one-hot
+# encoded normally.
+ONE_HOT_CATEGORICAL_COLUMNS = tuple(
+    c for c in ALL_CATEGORICAL_COLUMNS if c != "regime_id"
+)
+UNAVAILABLE_INDICATOR = "unavailable"
+UNSEEN_INDICATOR = "unseen"
+
+# model_matrix.py's resolve_matrix_settings() rejects any selected feature
+# name that doesn't start with "f_" (model_matrix.py:452-460) — a naming
+# convention already satisfied by every core_v1 feature, but not by any
+# ACD-derived column. Rather than modify model_matrix.py, every ACD
+# feature column materialized into features_1m_acd_v1_encoded (both the
+# pre-existing numeric/boolean columns and the one-hot indicator columns)
+# is prefixed with this before being written.
+ACD_FEATURE_COLUMN_PREFIX = "f_sm_"
+
+# The 46 non-categorical ACD numeric/boolean columns that need the f_
+# prefix (everything ACD-derived except the 14 raw categorical strings,
+# which are dropped/replaced by one-hot columns instead of renamed).
+ACD_NUMERIC_BOOLEAN_COLUMNS = tuple(sorted(
+    NUMERIC_GROUP_COLUMNS["sm_available"]
+    | NUMERIC_GROUP_COLUMNS["sm_regime_available"]
+    | NUMERIC_GROUP_COLUMNS["sm_env_available"]
+    | BOOLEAN_GROUP_COLUMNS["sm_available"]
+    | BOOLEAN_GROUP_COLUMNS["sm_regime_available"]
+    | {"sm_available", "sm_env_available", "sm_regime_available"}
+))
+
+
+def _acd_feature_name(raw_name: str) -> str:
+    return f"{ACD_FEATURE_COLUMN_PREFIX}{raw_name}"
 
 
 def _enforce_common_modeling_start(start_date):
@@ -729,6 +775,197 @@ def build_combined_feature_table(
         )
         atomic_write_parquet(
             combined, output_path, compression=parquet_compression
+        )
+        written.append(output_path)
+
+    return written
+
+
+def _merge_intervals(pairs: list[tuple]) -> list[list]:
+    """Merge (start, end) timestamp pairs into non-overlapping, sorted
+    intervals. Adjacent/overlapping pairs collapse into one interval —
+    used to turn ~1M individual TRAIN sequence windows (heavily
+    overlapping at stride=1) into a small number of covering ranges
+    without ever materializing every window's 120 rows."""
+
+    if not pairs:
+        return []
+
+    ordered = sorted(pairs)
+    merged = [list(ordered[0])]
+    for start, end in ordered[1:]:
+        if start <= merged[-1][1]:
+            if end > merged[-1][1]:
+                merged[-1][1] = end
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def _select_rows_in_intervals(
+    frame: pd.DataFrame, intervals: list[list]
+) -> pd.DataFrame:
+    mask = pd.Series(False, index=frame.index)
+    for start, end in intervals:
+        mask |= frame["datetime"].between(start, end)
+    return frame[mask]
+
+
+def fit_categorical_vocabularies(
+    *,
+    sequence_index_root: Path,
+    features_root: Path,
+    symbol: str,
+) -> dict[str, list[str]]:
+    """Fit one TRAIN-only vocabulary per categorical column, sourced from
+    every feature row actually covered by a TRAIN-split sequence's
+    [window_start_datetime, window_end_datetime] — not just each
+    sequence's endpoint row — per the approved Phase 3 correction."""
+
+    sequence_files = sorted(
+        glob.glob(str(sequence_index_root / "**" / "*.parquet"), recursive=True)
+    )
+    if not sequence_files:
+        raise FileNotFoundError(
+            f"No sequence_index partitions found under {sequence_index_root}."
+        )
+
+    train_windows = []
+    for file_path in sequence_files:
+        frame = _read_parquet_columns(
+            Path(file_path),
+            ["split", "window_start_datetime", "window_end_datetime"],
+        )
+        train_frame = frame[frame["split"] == "train"]
+        train_windows.extend(
+            zip(
+                train_frame["window_start_datetime"],
+                train_frame["window_end_datetime"],
+            )
+        )
+
+    if not train_windows:
+        raise ValueError("No TRAIN-split sequences found; cannot fit vocabulary.")
+
+    merged_intervals = _merge_intervals(train_windows)
+
+    feature_files = sorted(
+        glob.glob(str(features_root / f"symbol={symbol}" / "year=*" / "month=*" / "*.parquet"))
+    )
+    vocabularies: dict[str, set] = {c: set() for c in ONE_HOT_CATEGORICAL_COLUMNS}
+
+    for file_path in feature_files:
+        frame = _read_parquet_columns(
+            Path(file_path), ["datetime", *ONE_HOT_CATEGORICAL_COLUMNS]
+        )
+        train_rows = _select_rows_in_intervals(frame, merged_intervals)
+        if train_rows.empty:
+            continue
+        for column in ONE_HOT_CATEGORICAL_COLUMNS:
+            values = set(train_rows[column].unique()) - {UNAVAILABLE_INDICATOR}
+            vocabularies[column] |= values
+
+    return {
+        column: sorted(values) for column, values in vocabularies.items()
+    }
+
+
+def build_categorical_encoding_manifest(
+    vocabularies: dict[str, list[str]],
+) -> dict:
+    """Deterministic ordering per categorical: <col>_unavailable,
+    <col>_unseen, then one <col>_<value> column per sorted TRAIN value."""
+
+    manifest = {}
+    for column in ONE_HOT_CATEGORICAL_COLUMNS:
+        values = vocabularies[column]
+        # encoded_columns holds the FINAL materialized (f_sm_-prefixed)
+        # column names — the manifest is the source of truth for what's
+        # actually written and what model_matrix.py's --features must name.
+        encoded_columns = [
+            _acd_feature_name(f"{column}_{UNAVAILABLE_INDICATOR}"),
+            _acd_feature_name(f"{column}_{UNSEEN_INDICATOR}"),
+        ] + [_acd_feature_name(f"{column}_{value}") for value in values]
+        manifest[column] = {
+            "reserved": [UNAVAILABLE_INDICATOR, UNSEEN_INDICATOR],
+            "train_vocabulary": values,
+            "encoded_columns": encoded_columns,
+        }
+    return manifest
+
+
+def _one_hot_encode_column(
+    series: pd.Series, column: str, manifest_entry: dict
+) -> pd.DataFrame:
+    encoded_columns = manifest_entry["encoded_columns"]
+    train_vocabulary = manifest_entry["train_vocabulary"]
+
+    out = pd.DataFrame(
+        0, index=series.index, columns=encoded_columns, dtype="int8"
+    )
+    is_unavailable = series == UNAVAILABLE_INDICATOR
+    is_known = series.isin(train_vocabulary)
+    is_unseen = ~is_unavailable & ~is_known
+
+    out.loc[is_unavailable, _acd_feature_name(f"{column}_{UNAVAILABLE_INDICATOR}")] = 1
+    out.loc[is_unseen, _acd_feature_name(f"{column}_{UNSEEN_INDICATOR}")] = 1
+    for value in train_vocabulary:
+        out.loc[series == value, _acd_feature_name(f"{column}_{value}")] = 1
+
+    # Exactly one indicator per row.
+    assert (out.sum(axis=1) == 1).all(), (
+        f"{column}: one-hot encoding did not produce exactly one "
+        "indicator for every row."
+    )
+    return out
+
+
+def apply_categorical_encoding(
+    *,
+    features_root: Path,
+    output_root: Path,
+    manifest: dict,
+    symbol: str,
+    parquet_compression: str,
+) -> list[Path]:
+    """Apply the frozen TRAIN vocabulary/manifest to every row (train,
+    validation, and test alike) of features_root, replacing the 14 raw
+    categorical string columns with their one-hot indicator columns.
+    features_root itself is not modified — this writes a new tree."""
+
+    feature_files = sorted(
+        glob.glob(str(features_root / f"symbol={symbol}" / "year=*" / "month=*" / "*.parquet"))
+    )
+    if not feature_files:
+        raise FileNotFoundError(f"No partitions found under {features_root}.")
+
+    written: list[Path] = []
+    for file_path in feature_files:
+        frame = _read_parquet_table(Path(file_path)).to_pandas()
+
+        # Drop all 14 raw categorical string columns (model_matrix.py can't
+        # consume strings); regime_id is dropped without replacement
+        # (per-episode identifier, not a bounded category — see
+        # ONE_HOT_CATEGORICAL_COLUMNS), the other 13 are replaced by their
+        # one-hot indicator blocks. The 46 remaining ACD numeric/boolean
+        # columns are renamed with the f_ prefix model_matrix.py requires.
+        base = frame.drop(columns=list(ALL_CATEGORICAL_COLUMNS)).rename(
+            columns={
+                column: _acd_feature_name(column)
+                for column in ACD_NUMERIC_BOOLEAN_COLUMNS
+            }
+        )
+        encoded_blocks = [base]
+        for column in ONE_HOT_CATEGORICAL_COLUMNS:
+            encoded_blocks.append(
+                _one_hot_encode_column(frame[column], column, manifest[column])
+            )
+        encoded = pd.concat(encoded_blocks, axis=1)
+
+        relative = Path(file_path).relative_to(features_root)
+        output_path = output_root / relative
+        atomic_write_parquet(
+            encoded, output_path, compression=parquet_compression
         )
         written.append(output_path)
 
