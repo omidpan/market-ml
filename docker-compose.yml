@@ -47,7 +47,8 @@ services:
       - "${MLFLOW_HOST_PORT}:${MLFLOW_INTERNAL_PORT}"
 
     volumes:
-      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+      - "${MLFLOW_RUNTIME_HOST_PATH}/db:${MLFLOW_DB_CONTAINER_PATH}"
+      - "${MLFLOW_RUNTIME_HOST_PATH}/artifacts:${MLFLOW_ARTIFACTS_CONTAINER_PATH}"
 
     command:
       - mlflow
@@ -79,12 +80,11 @@ services:
 
     environment:
       MLFLOW_TRACKING_URI: "http://mlflow-server:${MLFLOW_INTERNAL_PORT}"
-      MODELS_DIRECTORY: "${MODELS_CONTAINER_PATH}"
-      MODEL_SUBDIRECTORY: "${MODEL_SUBDIRECTORY}"
+      MODEL_RUNS_DIRECTORY: "${MODEL_RUNS_CONTAINER_PATH}"
       GIT_PYTHON_REFRESH: quiet
 
     volumes:
-      - "${MODELS_HOST_PATH}:${MODELS_CONTAINER_PATH}"
+      - "${MODEL_RUNS_HOST_PATH}:${MODEL_RUNS_CONTAINER_PATH}:ro"
 
     depends_on:
       - mlflow-server

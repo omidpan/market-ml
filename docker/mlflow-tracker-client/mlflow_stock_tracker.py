@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -39,17 +40,9 @@ MLFLOW_TRACKING_URI = require_environment_variable(
     "MLFLOW_TRACKING_URI"
 )
 
-MODELS_DIRECTORY = Path(
-    require_environment_variable("MODELS_DIRECTORY")
-)
-
-MODEL_SUBDIRECTORY = require_environment_variable(
-    "MODEL_SUBDIRECTORY"
-)
-
-MODEL_DIRECTORY = (
-    MODELS_DIRECTORY / MODEL_SUBDIRECTORY
-)
+MODEL_RUNS_DIRECTORY = Path(
+    require_environment_variable("MODEL_RUNS_DIRECTORY")
+).resolve()
 
 
 # =========================================================================
@@ -79,6 +72,14 @@ class LogRunRequest(BaseModel):
 
     metrics: dict[str, float] = Field(
         default_factory=dict
+    )
+
+    model_run_path: str = Field(
+        alias="modelRunPath"
+    )
+
+    training_run_id: str = Field(
+        alias="trainingRunId"
     )
 
     model_config = {
@@ -127,6 +128,69 @@ def require_file(
     return file_path
 
 
+def resolve_model_run_directory(
+    model_run_path: str,
+    training_run_id: str,
+) -> Path:
+    """
+    Resolve modelRunPath under the trusted MODEL_RUNS_DIRECTORY root.
+
+    No recursive search: the caller supplies the exact relative run
+    directory, which is validated and then used directly.
+    """
+
+    if "\\" in model_run_path:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "modelRunPath must use POSIX '/' separators "
+                "only."
+            ),
+        )
+
+    if model_run_path.startswith("/"):
+        raise HTTPException(
+            status_code=400,
+            detail="modelRunPath must be a relative path.",
+        )
+
+    if any(
+        segment == ".."
+        for segment in model_run_path.split("/")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="modelRunPath must not contain '..' segments.",
+        )
+
+    resolved_path = (
+        MODEL_RUNS_DIRECTORY / model_run_path
+    ).resolve()
+
+    if not resolved_path.is_relative_to(MODEL_RUNS_DIRECTORY):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "modelRunPath must resolve under "
+                "MODEL_RUNS_DIRECTORY."
+            ),
+        )
+
+    expected_directory_name = f"run_id={training_run_id}"
+
+    if resolved_path.name != expected_directory_name:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "modelRunPath directory "
+                f"({resolved_path.name}) does not match "
+                f"trainingRunId ({expected_directory_name})."
+            ),
+        )
+
+    return resolved_path
+
+
 # =========================================================================
 # API ENDPOINTS
 # =========================================================================
@@ -157,17 +221,16 @@ def log_run(request: LogRunRequest):
             detail="horizon must be at least 1.",
         )
 
-    # Expected files inside /models/model
-    model_path = require_file(
-        MODEL_DIRECTORY
-        / f"lstm_model-{task}-{bar_size}.keras",
-        "Keras model",
+    run_directory = resolve_model_run_directory(
+        request.model_run_path,
+        request.training_run_id,
     )
 
-    scaler_path = require_file(
-        MODEL_DIRECTORY
-        / f"scaler-{task}-{bar_size}.pkl",
-        "Scaler",
+    # Located directly under the caller-supplied, validated run
+    # directory — no recursive search.
+    model_path = require_file(
+        run_directory / "best_model.keras",
+        "Keras model",
     )
 
     complete_metadata = {
@@ -175,24 +238,27 @@ def log_run(request: LogRunRequest):
         "task": task,
         "bar_size": bar_size,
         "horizon": request.horizon,
+        "training_run_id": request.training_run_id,
     }
 
-    metadata_path = (
-        MODELS_DIRECTORY
-        / f"feature_meta-{task}-{bar_size}.json"
-    )
+    metadata_temp_path: Path | None = None
 
     try:
-        # Save the received metadata
-        with metadata_path.open(
-            "w",
+        # MODEL_RUNS_DIRECTORY is mounted read-only, so metadata is
+        # staged in a temp file and logged as an MLflow artifact
+        # rather than written back into the mounted run directory.
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".json",
             encoding="utf-8",
+            delete=False,
         ) as metadata_file:
             json.dump(
                 complete_metadata,
                 metadata_file,
                 indent=2,
             )
+            metadata_temp_path = Path(metadata_file.name)
 
         mlflow.set_tracking_uri(
             MLFLOW_TRACKING_URI
@@ -207,6 +273,7 @@ def log_run(request: LogRunRequest):
                 "task": task,
                 "bar_size": bar_size,
                 "horizon": request.horizon,
+                "training_run_id": request.training_run_id,
                 "feature_count": len(
                     complete_metadata.get(
                         "feature_columns",
@@ -223,19 +290,15 @@ def log_run(request: LogRunRequest):
                     request.metrics
                 )
 
-            # Put Keras and PKL files under model/
-            for model_file in [
-                model_path,
-                scaler_path,
-            ]:
-                mlflow.log_artifact(
-                    local_path=str(model_file),
-                    artifact_path="model",
-                )
+            # Put the Keras model under model/
+            mlflow.log_artifact(
+                local_path=str(model_path),
+                artifact_path="model",
+            )
 
             # Put JSON under metadata/
             mlflow.log_artifact(
-                local_path=str(metadata_path),
+                local_path=str(metadata_temp_path),
                 artifact_path="metadata",
             )
 
@@ -246,8 +309,6 @@ def log_run(request: LogRunRequest):
                 "artifactUri": mlflow.get_artifact_uri(),
                 "uploadedFiles": [
                     model_path.name,
-                    scaler_path.name,
-                    metadata_path.name,
                 ],
             }
 
@@ -259,3 +320,7 @@ def log_run(request: LogRunRequest):
             status_code=500,
             detail=f"MLflow logging failed: {error}",
         ) from error
+
+    finally:
+        if metadata_temp_path is not None:
+            metadata_temp_path.unlink(missing_ok=True)
