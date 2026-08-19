@@ -1673,15 +1673,15 @@ def main():
         ),
     }
 
-    # send_run_to_mlflow_tracker(
-    #     metadata_path=__FEATURE_META_PATH,
-    #     experiment_name=experiment_name,
-    #     task=task,
-    #     bar_size=bar_size,
-    #     horizon=primary_horizon,
-    #     parameters=tracking_parameters,
-    #     metrics=tracking_metrics,
-    # )
+    send_run_to_mlflow_tracker(
+        metadata_path=__FEATURE_META_PATH,
+        experiment_name=experiment_name,
+        task=task,
+        bar_size=bar_size,
+        horizon=primary_horizon,
+        parameters=tracking_parameters,
+        metrics=tracking_metrics,
+    )
 
 
 if __name__ == "__main__":
