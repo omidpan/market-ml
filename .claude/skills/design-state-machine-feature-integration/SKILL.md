@@ -1,7 +1,6 @@
 ---
 name: design-state-machine-feature-integration
 description: Define the causal, leakage-safe integration contract between market-ml and ACD state-machine outputs before implementation or training.
-disable-model-invocation: true
 ---
 
 # Milestone 1 — Phase 1: State-Machine Feature Integration Contract
