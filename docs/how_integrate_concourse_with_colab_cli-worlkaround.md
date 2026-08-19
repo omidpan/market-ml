@@ -48,6 +48,37 @@ jobs:
 ```
 
 ---
+```yaml
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: 
+    repository: python
+    tag: "3.12"
+
+params:
+  # Pull the secret JSON string into an environment variable
+  COLAB_TOKEN_DATA: ((colab_token_json))
+
+run:
+  path: sh
+  args:
+    - -cx
+    - |
+      # 1. Install the CLI tool
+      pip install google-colab-cli
+      
+      # 2. Re-create the token directory structure inside the CI container
+      mkdir -p ~/.config/colab-cli
+      
+      # 3. Write the secret environment variable content back into the token file
+      echo "$COLAB_TOKEN_DATA" > ~/.config/colab-cli/token.json
+      
+      # 4. Execute your remote training script safely on the target GPU
+      colab exec --gpu A100 --script my_market_ml_script.py
+
+```
 
 ## 2. Automation Shell Script (`ci/run_gpu_task.sh`)
 
