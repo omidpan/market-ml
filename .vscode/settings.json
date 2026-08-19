@@ -1,12 +1,10 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-     "workbench.colorTheme": "Default Dark Modern",
+     "workbench.colorTheme": "Dark Modern",
   "editor.fontSize": 14,
-  
-  // Set default cwd for integrated terminal to your symlink
-  "terminal.integrated.cwd": "/Users/leo/project",
-  
+  "terminal.integrated.fontSize": 15,
+  "terminal.integrated.cwd": "${workspaceFolder}",
   // Prevent VS Code from automatically following symlinks in explorer/workspace
   "explorer.allowSymlinks": true
 }

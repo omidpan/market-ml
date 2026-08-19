@@ -9,7 +9,7 @@ request_pause_seconds: 2.0
 timeout_seconds: 120
 
 defaults:
-  start_date: "2019-12-01"
+  start_date: "2021-01-04"
   end_date: "2026-08-09"
   duration: "5 Y"
   bar_size: "1 min"

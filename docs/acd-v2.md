@@ -1028,15 +1028,15 @@ The overall system becomes:
           +----------------+----------------+
                            |
                            v
-                 +-------------------+
-                 |   STATE ENGINE    |
-                 +-------------------+
+                 +-------------------------+
+                 | ACD STATE MACHINE ENGINE |
+                 +-------------------------+
                            |
         +------------------+------------------+
         |                  |                  |
         v                  v                  v
-   ACD/Opening         Bollinger           EMA
-      Range               State            State
+        ACD STATE        Bollinger           EMA
+         State            State            State
         |                  |                  |
         +------------------+------------------+
                            |

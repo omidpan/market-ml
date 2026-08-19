@@ -1,0 +1,2051 @@
+<!doctype html>
+<html lang="en" data-visualize-standalone>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Acd Rule Engine Lab</title>
+<style>:root {
+  color-scheme: light dark;
+  background-color: transparent !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --main-surface-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --red: light-dark(rgb(186 38 35), rgb(250 66 62));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 10px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 17 17'%3E%3Cpath d='M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z'/%3E%3C/svg%3E");
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-visualize-standalone] {
+  background-color: var(--background) !important;
+}
+
+/* Generic mobile code-block hosts provide light/dark mode but no series palette.
+   AppBlock hosts set all six variables themselves. */
+:root:not([data-app-block-surface]) {
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(#f3883b, #f59a56);
+  --viz-series-3: light-dark(#5dc977, #74d58b);
+  --viz-series-4: light-dark(#eb77b1, #f08fc0);
+  --viz-series-5: light-dark(#9b79ec, #aa91ef);
+  --viz-series-6: light-dark(#3ab9b1, #5acbc2);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html > body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+:root:not([data-app-block-surface]) > body {
+  padding: 12px;
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive > .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align="right"]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align="center"]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget > :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The bundled tooltip runtime owns [data-tooltip]. AppBlock's CSS-only
+   pseudo-tooltip can widen dense grids even while hidden. */
+main [data-tooltip]::after {
+  content: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls > .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls > .form-label > :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--interactive-label-primary-default, var(--primary-foreground));
+  background: var(--interactive-bg-primary-default, var(--foreground));
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(
+    in srgb,
+    var(--interactive-label-primary-default, var(--primary-foreground)) 50%,
+    transparent
+  );
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type="file"] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type="file"]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type="checkbox"]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type="checkbox"]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: "";
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type="radio"]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: "";
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed="true"], [aria-selected="true"], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget > svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+</style>
+</head>
+<body>
+<div id="acd-rule-engine-lab">
+  <div class="viz-controls" aria-label="Scenario controls">
+    <label class="form-label" for="acd-family">Context family
+      <select class="form-select" id="acd-family">
+        <option value="touches">Touches &amp; line tests</option>
+        <option value="rejections" selected>Rejections</option>
+        <option value="breakouts">Breakouts &amp; continuation</option>
+        <option value="failed">Breakout failures &amp; late reversals</option>
+        <option value="reversals">Context reversals</option>
+        <option value="choppy">Choppy &amp; whipsaw</option>
+      </select>
+    </label>
+    <label class="form-label" for="acd-scenario">Price behavior
+      <select class="form-select" id="acd-scenario"></select>
+    </label>
+  </div>
+
+  <div class="viz-controls" aria-label="Candle and opening-range controls">
+    <label class="form-label" for="acd-candle-minutes">Candle interval
+      <select class="form-select" id="acd-candle-minutes">
+        <option value="1">1 minute</option>
+        <option value="5" selected>5 minutes</option>
+      </select>
+    </label>
+    <label class="form-label" for="acd-or-profile">Opening range
+      <select class="form-select" id="acd-or-profile">
+        <option value="narrow">Narrow OR · 0.12 ATR</option>
+        <option value="normal" selected>Normal OR · 0.30 ATR</option>
+        <option value="wide">Wide OR · 0.52 ATR</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="viz-controls" aria-label="Buffer and confirmation-basis controls">
+    <label class="form-label" for="acd-buffer-profile">A/C buffer
+      <select class="form-select" id="acd-buffer-profile">
+        <option value="narrow">Narrow · A 5% / C 10% ATR</option>
+        <option value="balanced" selected>Balanced · A 7.5% / C 15% ATR</option>
+        <option value="wide">Wide · A 10% / C 20% ATR</option>
+      </select>
+    </label>
+    <label class="form-label" for="acd-confirm-mode">C confirmation basis
+      <select class="form-select" id="acd-confirm-mode">
+        <option value="bars">Consecutive completed closes</option>
+        <option value="distance">Close distance beyond level</option>
+        <option value="either" selected>Bars or distance</option>
+        <option value="both">Bars and distance</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="viz-controls" aria-label="Confirmation threshold controls">
+    <label class="form-label" for="acd-confirm-bars">Completed candles required
+      <select class="form-select" id="acd-confirm-bars">
+        <option value="1">1 completed candle</option>
+        <option value="2" selected>2 completed candles</option>
+        <option value="3">3 completed candles</option>
+        <option value="4">4 completed candles</option>
+      </select>
+    </label>
+    <label class="form-label" for="acd-confirm-distance">Distance required
+      <select class="form-select" id="acd-confirm-distance">
+        <option value="0.05">0.05 ATR</option>
+        <option value="0.10" selected>0.10 ATR</option>
+        <option value="0.15">0.15 ATR</option>
+        <option value="0.20">0.20 ATR</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="acd-key text-small" aria-label="ACD level colors and environment metrics">
+    <span><i class="acd-swatch acd-or-swatch" aria-hidden="true"></i>OR · blue</span>
+    <span><i class="acd-swatch acd-a-swatch" aria-hidden="true"></i>A · yellow</span>
+    <span><i class="acd-swatch acd-c-swatch" aria-hidden="true"></i>C · white</span>
+    <span class="text-muted" id="acd-environment-metrics"></span>
+  </div>
+
+  <svg id="acd-lab-chart" role="img" aria-labelledby="acd-lab-title acd-lab-desc">
+    <title id="acd-lab-title">Causal ACD state, event, and rule simulation</title>
+    <desc id="acd-lab-desc">A candle-by-candle price path through all seven ACD price regions with configurable breakout confirmation.</desc>
+    <g id="acd-lab-zones"></g>
+    <g id="acd-lab-grid"></g>
+    <g id="acd-lab-levels"></g>
+    <g id="acd-lab-candles"></g>
+    <g id="acd-lab-marker"></g>
+    <g id="acd-lab-axis"></g>
+  </svg>
+
+  <label class="form-label" for="acd-lab-step">Completed candle: <span id="acd-lab-step-label"></span>
+    <input class="form-range" id="acd-lab-step" type="range" min="0" max="1" value="0" step="1">
+  </label>
+
+  <div class="acd-lab-lanes" aria-live="polite">
+    <div class="acd-lab-lane"><span>Location state</span><strong id="acd-lab-state"></strong></div>
+    <div class="acd-lab-lane"><span>Factual event(s)</span><strong id="acd-lab-event"></strong></div>
+    <div class="acd-lab-lane"><span>Rule evidence</span><strong id="acd-lab-rule"></strong></div>
+    <div class="acd-lab-lane"><span>Signal lifecycle</span><strong id="acd-lab-lifecycle"></strong></div>
+    <div class="acd-lab-lane"><span>Current-day context</span><strong id="acd-lab-context"></strong></div>
+  </div>
+</div>
+
+<style>
+  #acd-rule-engine-lab {
+    --acd-or: light-dark(rgb(24 103 194), rgb(104 174 255));
+    --acd-a: light-dark(rgb(150 105 0), rgb(255 214 64));
+    --acd-c: light-dark(rgb(255 255 255), rgb(255 255 255));
+    color: var(--foreground);
+    margin-inline: auto;
+    max-width: 760px;
+    width: 100%;
+  }
+  #acd-rule-engine-lab .viz-controls {
+    margin-bottom: 6px;
+  }
+  #acd-rule-engine-lab .acd-key {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 4px 0 8px;
+  }
+  #acd-rule-engine-lab .acd-key > span {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
+  }
+  #acd-rule-engine-lab .acd-swatch {
+    border-radius: 999px;
+    display: inline-block;
+    height: 3px;
+    width: 24px;
+  }
+  #acd-rule-engine-lab .acd-or-swatch {
+    background: var(--acd-or);
+  }
+  #acd-rule-engine-lab .acd-a-swatch {
+    background: var(--acd-a);
+  }
+  #acd-rule-engine-lab .acd-c-swatch {
+    background: var(--acd-c);
+    box-shadow: 0 0 0 1px var(--muted-foreground);
+  }
+  #acd-lab-chart {
+    color: var(--foreground);
+    display: block;
+    height: auto;
+    width: 100%;
+  }
+  #acd-lab-chart .grid-line,
+  #acd-lab-chart .zone-leader {
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+  #acd-lab-chart .zone-label,
+  #acd-lab-chart .level-label,
+  #acd-lab-chart .time-label,
+  #acd-lab-chart .marker-label {
+    fill: var(--foreground);
+    font-family: inherit;
+    font-weight: 400;
+  }
+  #acd-lab-chart .time-label,
+  #acd-lab-chart .zone-label {
+    fill: var(--muted-foreground);
+  }
+  #acd-lab-chart .or-line {
+    stroke: var(--acd-or);
+    stroke-width: 2.5;
+  }
+  #acd-lab-chart .a-line {
+    stroke: var(--acd-a);
+    stroke-width: 2.5;
+  }
+  #acd-lab-chart .c-line-underlay {
+    stroke: var(--foreground);
+    stroke-width: 5;
+    opacity: 0.55;
+  }
+  #acd-lab-chart .c-line {
+    stroke: var(--acd-c);
+    stroke-width: 2.5;
+  }
+  #acd-lab-chart .wick {
+    stroke: var(--foreground);
+    stroke-width: 1.5;
+  }
+  #acd-lab-chart .candle-up {
+    fill: var(--viz-series-2);
+  }
+  #acd-lab-chart .candle-down {
+    fill: var(--viz-series-4);
+  }
+  #acd-lab-chart .current-guide {
+    stroke: var(--primary);
+    stroke-width: 1;
+  }
+  #acd-lab-chart .current-ring {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 3;
+  }
+  #acd-rule-engine-lab .acd-lab-lanes {
+    margin-top: 10px;
+  }
+  #acd-rule-engine-lab .acd-lab-lane {
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(132px, 0.28fr) minmax(0, 1fr);
+    padding: 6px 0;
+  }
+  #acd-rule-engine-lab .acd-lab-lane span {
+    color: var(--muted-foreground);
+  }
+  #acd-rule-engine-lab .acd-lab-lane strong {
+    font-weight: 500;
+  }
+  @media (max-width: 480px) {
+    #acd-rule-engine-lab .acd-lab-lane {
+      gap: 2px;
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script>
+(() => {
+  const root = document.getElementById("acd-rule-engine-lab");
+  const chart = root.querySelector("#acd-lab-chart");
+  const ns = "http://www.w3.org/2000/svg";
+  const ATR = 4;
+  const SUCCESS_DISTANCE_ATR = 0.20;
+
+  const orProfiles = {
+    narrow: { label: "NARROW OR", ratio: 0.12 },
+    normal: { label: "NORMAL OR", ratio: 0.30 },
+    wide: { label: "WIDE OR", ratio: 0.52 }
+  };
+
+  const bufferProfiles = {
+    narrow: { label: "NARROW BUFFER", a: 0.05, c: 0.10 },
+    balanced: { label: "BALANCED BUFFER", a: 0.075, c: 0.15 },
+    wide: { label: "WIDE BUFFER", a: 0.10, c: 0.20 }
+  };
+
+  const scenarios = [
+    makeScenario("a-up-shadow", "touches", "A-UP touch / upper shadow / re-entry", "touch", ["orMid", "orHighIn", "orHighOut", "upperBuffer", "aUpIn", "upperBuffer", "aUpIn", "upperBuffer"], { 4: { high: "aUpOut" } }, { level: "aUp" }, 4),
+    makeScenario("a-down-shadow", "touches", "A-DOWN touch / lower shadow / re-entry", "touch", ["orMid", "orLowIn", "orLowOut", "lowerBuffer", "aDownIn", "lowerBuffer", "aDownIn", "lowerBuffer"], { 4: { low: "aDownOut" } }, { level: "aDown" }, 4),
+    makeScenario("c-up-shadow", "touches", "C-UP touch / upper shadow / re-entry", "touch", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpIn", "upperBand", "aUpOut", "upperBand"], { 4: { high: "aboveC" } }, { level: "cUp" }, 4),
+    makeScenario("c-down-shadow", "touches", "C-DOWN touch / lower shadow / re-entry", "touch", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownIn", "lowerBand", "aDownOut", "lowerBand"], { 4: { low: "belowC" } }, { level: "cDown" }, 4),
+    makeScenario("or-high-test", "touches", "OR-HIGH test and return inside", "touch", ["orMid", "orHighIn", "orHighIn", "orMid", "orLowIn"], { 2: { high: "orHighOut" } }, { level: "orHigh" }, 2),
+    makeScenario("or-low-test", "touches", "OR-LOW test and return inside", "touch", ["orMid", "orLowIn", "orLowIn", "orMid", "orHighIn"], { 2: { low: "orLowOut" } }, { level: "orLow" }, 2),
+
+    makeScenario("a-up-rejection", "rejections", "Rejection from A-UP", "rejection", ["orMid", "orHighOut", "upperBuffer", "aUpIn", "orHighIn", "orMid", "orLowIn", "lowerBuffer"], { 3: { high: "aUpOut" } }, { level: "aUp" }, 5),
+    makeScenario("a-down-rejection", "rejections", "Rejection from A-DOWN", "rejection", ["orMid", "orLowOut", "lowerBuffer", "aDownIn", "orLowIn", "orMid", "orHighIn", "upperBuffer"], { 3: { low: "aDownOut" } }, { level: "aDown" }, 5),
+    makeScenario("c-up-rejection", "rejections", "Rejection from C-UP", "rejection", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpIn", "aUpIn", "orHighIn", "orMid", "lowerBuffer"], { 4: { high: "aboveC" } }, { level: "cUp" }, 6),
+    makeScenario("c-down-rejection", "rejections", "Rejection from C-DOWN", "rejection", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownIn", "aDownIn", "orLowIn", "orMid", "upperBuffer"], { 4: { low: "belowC" } }, { level: "cDown" }, 6),
+
+    makeScenario("c-up-bars", "breakouts", "C-UP breakout · bar confirmation", "breakout", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpOut", "aboveC", "aboveCFar", "aboveC", "aboveCFar"], {}, { direction: 1 }, 5),
+    makeScenario("c-down-bars", "breakouts", "C-DOWN breakout · bar confirmation", "breakout", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownOut", "belowC", "belowCFar", "belowC", "belowCFar"], {}, { direction: -1 }, 5),
+    makeScenario("c-up-distance", "breakouts", "C-UP breakout · fast distance confirmation", "breakout", ["orMid", "orHighOut", "aUpOut", "cUpOut", "aboveCFar", "aboveCFar", "aboveC"], {}, { direction: 1 }, 4),
+    makeScenario("c-down-distance", "breakouts", "C-DOWN breakout · fast distance confirmation", "breakout", ["orMid", "orLowOut", "aDownOut", "cDownOut", "belowCFar", "belowCFar", "belowC"], {}, { direction: -1 }, 4),
+    makeScenario("c-up-retest", "breakouts", "C-UP breakout · retest · continuation", "breakout", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpOut", "aboveC", "aboveCFar", "cUpOut", "cUpIn", "cUpOut", "aboveCFar"], {}, { direction: 1 }, 8),
+    makeScenario("c-down-retest", "breakouts", "C-DOWN breakout · retest · continuation", "breakout", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownOut", "belowC", "belowCFar", "cDownOut", "cDownIn", "cDownOut", "belowCFar"], {}, { direction: -1 }, 8),
+
+    makeScenario("c-up-pending-invalid", "failed", "C-UP candidate invalidated before confirmation", "failed", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpOut", "cUpIn", "aUpIn", "orHighIn", "orMid"], {}, { direction: 1 }, 5),
+    makeScenario("c-down-pending-invalid", "failed", "C-DOWN candidate invalidated before confirmation", "failed", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownOut", "cDownIn", "aDownIn", "orLowIn", "orMid"], {}, { direction: -1 }, 5),
+    makeScenario("c-up-good-then-rejected", "failed", "C-UP confirmed · good distance · rejected later", "failed", ["orMid", "orHighOut", "aUpOut", "upperBand", "cUpOut", "aboveC", "aboveCFar", "aboveC", "cUpIn", "aUpIn", "orHighIn", "orMid"], {}, { direction: 1 }, 10),
+    makeScenario("c-down-good-then-rejected", "failed", "C-DOWN confirmed · good distance · rejected later", "failed", ["orMid", "orLowOut", "aDownOut", "lowerBand", "cDownOut", "belowC", "belowCFar", "belowC", "cDownIn", "aDownIn", "orLowIn", "orMid"], {}, { direction: -1 }, 10),
+
+    makeScenario("c-up-to-c-down", "reversals", "Complete context flip · C-UP to C-DOWN", "reversal", ["orMid", "orHighOut", "aUpOut", "cUpOut", "aboveC", "aboveCFar", "cUpIn", "aUpIn", "orMid", "lowerBuffer", "aDownOut", "lowerBand", "cDownOut", "belowC", "belowCFar"], {}, { kind: "c", direction: -1 }, 13),
+    makeScenario("c-down-to-c-up", "reversals", "Complete context flip · C-DOWN to C-UP", "reversal", ["orMid", "orLowOut", "aDownOut", "cDownOut", "belowC", "belowCFar", "cDownIn", "aDownIn", "orMid", "upperBuffer", "aUpOut", "upperBand", "cUpOut", "aboveC", "aboveCFar"], {}, { kind: "c", direction: 1 }, 13),
+    makeScenario("a-up-to-a-down", "reversals", "Directional flip · A-UP to A-DOWN", "reversal", ["orMid", "orHighOut", "aUpOut", "upperBand", "aUpIn", "orHighIn", "orMid", "orLowOut", "aDownOut", "lowerBand"], {}, { kind: "a", direction: -1 }, 8),
+    makeScenario("a-down-to-a-up", "reversals", "Directional flip · A-DOWN to A-UP", "reversal", ["orMid", "orLowOut", "aDownOut", "lowerBand", "aDownIn", "orLowIn", "orMid", "orHighOut", "aUpOut", "upperBand"], {}, { kind: "a", direction: 1 }, 8),
+
+    makeScenario("inside-or-rotation", "choppy", "Inside-OR rotation · no A signal", "choppy", ["orMid", "orHighIn", "orLowIn", "orHighIn", "orLowIn", "orMid", "orHighIn", "orLowIn", "orMid"], {}, {}, 7),
+    makeScenario("a-band-whipsaw", "choppy", "Repeated A-UP / A-DOWN whipsaw", "choppy", ["orMid", "orHighOut", "aUpOut", "aUpIn", "orMid", "orLowOut", "aDownOut", "aDownIn", "orMid", "orHighOut", "aUpOut", "aUpIn"], {}, {}, 10),
+    makeScenario("c-up-false-breaks", "choppy", "Repeated false breaks at C-UP", "choppy", ["orMid", "aUpOut", "upperBand", "cUpOut", "cUpIn", "aUpIn", "upperBand", "cUpOut", "cUpIn", "aUpIn", "orMid"], {}, {}, 8),
+    makeScenario("c-down-false-breaks", "choppy", "Repeated false breaks at C-DOWN", "choppy", ["orMid", "aDownOut", "lowerBand", "cDownOut", "cDownIn", "aDownIn", "lowerBand", "cDownOut", "cDownIn", "aDownIn", "orMid"], {}, {}, 8),
+    makeScenario("two-sided-c-whipsaw", "choppy", "Two-sided C whipsaw", "choppy", ["orMid", "aUpOut", "cUpOut", "aboveC", "aUpIn", "orMid", "aDownOut", "cDownOut", "belowC", "aDownIn", "orMid", "aUpOut", "cUpOut", "aboveC"], {}, {}, 12),
+    makeScenario("break-reject-rebreak", "choppy", "C-UP breakout · rejection · re-breakout", "choppy", ["orMid", "aUpOut", "cUpOut", "aboveC", "aboveCFar", "cUpIn", "aUpIn", "orMid", "aUpOut", "cUpOut", "aboveC", "aboveCFar"], {}, {}, 10)
+  ];
+
+  const rejectionDefinitions = {
+    aUp: { label: "A_UP", direction: -1, level: "aUp", confirmLine: "orHigh", target: "orMid" },
+    cUp: { label: "C_UP", direction: -1, level: "cUp", confirmLine: "aUp", target: "orHigh" },
+    aDown: { label: "A_DOWN", direction: 1, level: "aDown", confirmLine: "orLow", target: "orMid" },
+    cDown: { label: "C_DOWN", direction: 1, level: "cDown", confirmLine: "aDown", target: "orLow" }
+  };
+
+  function makeScenario(id, group, label, focus, points, wicks, meta, defaultStep) {
+    return { id, group, label, focus, points, wicks, meta, defaultStep };
+  }
+
+  function svgEl(name, attrs, textValue) {
+    const element = document.createElementNS(ns, name);
+    Object.entries(attrs || {}).forEach(([key, value]) => element.setAttribute(key, String(value)));
+    if (textValue !== undefined) element.textContent = textValue;
+    return element;
+  }
+
+  function clear(group) {
+    while (group.firstChild) group.removeChild(group.firstChild);
+  }
+
+  function environment() {
+    const orProfile = orProfiles[root.querySelector("#acd-or-profile").value];
+    const bufferProfile = bufferProfiles[root.querySelector("#acd-buffer-profile").value];
+    const center = 100;
+    const orWidth = orProfile.ratio * ATR;
+    const orHigh = center + orWidth / 2;
+    const orLow = center - orWidth / 2;
+    return {
+      atr: ATR,
+      orProfile,
+      bufferProfile,
+      orHigh,
+      orLow,
+      orMid: center,
+      aUp: orHigh + bufferProfile.a * ATR,
+      aDown: orLow - bufferProfile.a * ATR,
+      cUp: orHigh + bufferProfile.c * ATR,
+      cDown: orLow - bufferProfile.c * ATR
+    };
+  }
+
+  function tokenValue(token, levels) {
+    const d = levels.atr;
+    const values = {
+      belowCFar: levels.cDown - 0.24 * d,
+      belowC: levels.cDown - 0.06 * d,
+      cDownOut: levels.cDown - 0.025 * d,
+      cDownIn: levels.cDown + 0.015 * d,
+      lowerBand: (levels.cDown + levels.aDown) / 2,
+      aDownOut: levels.aDown - 0.025 * d,
+      aDownIn: levels.aDown + 0.015 * d,
+      lowerBuffer: (levels.aDown + levels.orLow) / 2,
+      orLowOut: levels.orLow - 0.02 * d,
+      orLowIn: levels.orLow + 0.02 * d,
+      orMid: levels.orMid,
+      orHighIn: levels.orHigh - 0.02 * d,
+      orHighOut: levels.orHigh + 0.02 * d,
+      upperBuffer: (levels.orHigh + levels.aUp) / 2,
+      aUpIn: levels.aUp - 0.015 * d,
+      aUpOut: levels.aUp + 0.025 * d,
+      upperBand: (levels.aUp + levels.cUp) / 2,
+      cUpIn: levels.cUp - 0.015 * d,
+      cUpOut: levels.cUp + 0.025 * d,
+      aboveC: levels.cUp + 0.06 * d,
+      aboveCFar: levels.cUp + 0.24 * d
+    };
+    return values[token];
+  }
+
+  function buildBars(scenario, levels) {
+    const closes = scenario.points.map((token) => tokenValue(token, levels));
+    const pad = 0.008 * levels.atr;
+    return closes.map((close, index) => {
+      const open = index === 0 ? tokenValue("orMid", levels) : closes[index - 1];
+      let high = Math.max(open, close) + pad;
+      let low = Math.min(open, close) - pad;
+      const wick = scenario.wicks[index];
+      if (wick && wick.high) high = Math.max(high, tokenValue(wick.high, levels));
+      if (wick && wick.low) low = Math.min(low, tokenValue(wick.low, levels));
+      return { open, high, low, close };
+    });
+  }
+
+  function locateState(close, levels) {
+    if (close > levels.cUp) return { code: 3, name: "ABOVE_C_UP" };
+    if (close > levels.aUp) return { code: 2, name: "A_UP_TO_C_UP" };
+    if (close > levels.orHigh) return { code: 1, name: "OR_HIGH_TO_A_UP" };
+    if (close >= levels.orLow) return { code: 0, name: "INSIDE_OR" };
+    if (close >= levels.aDown) return { code: -1, name: "A_DOWN_TO_OR_LOW" };
+    if (close >= levels.cDown) return { code: -2, name: "C_DOWN_TO_A_DOWN" };
+    return { code: -3, name: "BELOW_C_DOWN" };
+  }
+
+  function lineDefinitions(levels) {
+    return [
+      { key: "C_UP", prop: "cUp", value: levels.cUp, kind: "c" },
+      { key: "A_UP", prop: "aUp", value: levels.aUp, kind: "a" },
+      { key: "OR_HIGH", prop: "orHigh", value: levels.orHigh, kind: "or" },
+      { key: "OR_LOW", prop: "orLow", value: levels.orLow, kind: "or" },
+      { key: "A_DOWN", prop: "aDown", value: levels.aDown, kind: "a" },
+      { key: "C_DOWN", prop: "cDown", value: levels.cDown, kind: "c" }
+    ];
+  }
+
+  function factualEvents(index, bars, levels) {
+    const bar = bars[index];
+    const previous = index > 0 ? bars[index - 1] : null;
+    const previousState = previous ? locateState(previous.close, levels) : null;
+    const state = locateState(bar.close, levels);
+    const events = [];
+
+    lineDefinitions(levels).forEach((line) => {
+      let crossed = false;
+      if (previous && previous.close <= line.value && bar.close > line.value) {
+        events.push(line.key + "_CROSS_UP");
+        crossed = true;
+      } else if (previous && previous.close >= line.value && bar.close < line.value) {
+        events.push(line.key + "_CROSS_DOWN");
+        crossed = true;
+      }
+
+      const bodyHigh = Math.max(bar.open, bar.close);
+      const bodyLow = Math.min(bar.open, bar.close);
+      if (bar.high >= line.value && bodyHigh < line.value) {
+        events.push(line.key + "_UPPER_SHADOW_REENTRY");
+      } else if (bar.low <= line.value && bodyLow > line.value) {
+        events.push(line.key + "_LOWER_SHADOW_REENTRY");
+      } else if (!crossed && bar.low <= line.value && bar.high >= line.value) {
+        events.push(line.key + "_TOUCH");
+      }
+    });
+
+    if (previousState && previousState.name !== state.name) {
+      events.push("STATE_CHANGE_" + previousState.name + "_TO_" + state.name);
+    }
+    return { state, events: events.length ? events : ["NO_NEW_LEVEL_EVENT"] };
+  }
+
+  function confirmationConfig() {
+    return {
+      mode: root.querySelector("#acd-confirm-mode").value,
+      bars: Number(root.querySelector("#acd-confirm-bars").value),
+      distance: Number(root.querySelector("#acd-confirm-distance").value),
+      interval: Number(root.querySelector("#acd-candle-minutes").value)
+    };
+  }
+
+  function confirmationPassed(config, barsPassed, distancePassed) {
+    if (config.mode === "bars") return barsPassed;
+    if (config.mode === "distance") return distancePassed;
+    if (config.mode === "both") return barsPassed && distancePassed;
+    return barsPassed || distancePassed;
+  }
+
+  function confirmationJoin(config) {
+    if (config.mode === "bars") return "bars";
+    if (config.mode === "distance") return "distance";
+    if (config.mode === "both") return "bars AND distance";
+    return "bars OR distance";
+  }
+
+  function newTracker(prefix) {
+    return { prefix, sequence: 0, active: null, history: [], lastEvidence: null };
+  }
+
+  function createSignal(tracker, createdAt, direction) {
+    tracker.sequence += 1;
+    return {
+      id: tracker.prefix + String(tracker.sequence).padStart(2, "0"),
+      direction,
+      status: "PENDING",
+      createdAt,
+      confirmedAt: null,
+      successfulAt: null,
+      endedAt: null,
+      consecutive: 0,
+      currentDistance: 0,
+      maxDistance: 0
+    };
+  }
+
+  function archiveSignal(tracker, signal, status, index) {
+    signal.status = status;
+    signal.endedAt = index;
+    tracker.history.push(signal);
+    tracker.active = null;
+  }
+
+  function processBreakout(machine, side, index, bar, levels, config) {
+    const direction = side === "up" ? 1 : -1;
+    const tracker = machine.breakouts[side];
+    const cLevel = side === "up" ? levels.cUp : levels.cDown;
+    const aLevel = side === "up" ? levels.aUp : levels.aDown;
+    const outside = direction * (bar.close - cLevel) > 0;
+
+    if (!tracker.active && outside) {
+      tracker.active = createSignal(tracker, index, direction);
+    }
+
+    const signal = tracker.active;
+    if (!signal) {
+      tracker.lastEvidence = null;
+      return;
+    }
+
+    if (outside) {
+      signal.consecutive += 1;
+      signal.currentDistance = Math.max(0, direction * (bar.close - cLevel) / levels.atr);
+      signal.maxDistance = Math.max(signal.maxDistance, signal.currentDistance);
+      const barsPassed = signal.consecutive >= config.bars;
+      const distancePassed = signal.currentDistance >= config.distance;
+      tracker.lastEvidence = { barsPassed, distancePassed, bars: signal.consecutive, distance: signal.currentDistance };
+
+      if (signal.status === "PENDING" && confirmationPassed(config, barsPassed, distancePassed)) {
+        signal.status = "CONFIRMED";
+        signal.confirmedAt = index;
+        if (machine.lastStrongDirection && machine.lastStrongDirection !== direction) machine.contextFlips += 1;
+        machine.lastStrongDirection = direction;
+      }
+      if ((signal.status === "CONFIRMED" || signal.status === "SUCCESSFUL") && signal.maxDistance >= SUCCESS_DISTANCE_ATR) {
+        signal.status = "SUCCESSFUL";
+        if (signal.successfulAt === null) signal.successfulAt = index;
+      }
+      return;
+    }
+
+    signal.consecutive = 0;
+    signal.currentDistance = Math.max(0, direction * (bar.close - cLevel) / levels.atr);
+    tracker.lastEvidence = { barsPassed: false, distancePassed: false, bars: 0, distance: signal.currentDistance };
+    if (signal.status === "PENDING") {
+      archiveSignal(tracker, signal, "INVALIDATED_BEFORE_CONFIRMATION", index);
+      return;
+    }
+
+    const lostA = direction * (bar.close - aLevel) < 0;
+    if (lostA && (signal.status === "CONFIRMED" || signal.status === "SUCCESSFUL")) {
+      const finalStatus = signal.successfulAt === null ? "FAILED_AFTER_CONFIRMATION" : "SUCCESS_THEN_REVERSED";
+      archiveSignal(tracker, signal, finalStatus, index);
+    }
+  }
+
+  function processRejection(machine, key, index, bar, levels, config) {
+    const definition = rejectionDefinitions[key];
+    const tracker = machine.rejections[key];
+    const level = levels[definition.level];
+    const confirmLine = levels[definition.confirmLine];
+    const target = levels[definition.target];
+    const direction = definition.direction;
+    const reentry = direction < 0
+      ? bar.high >= level && bar.close < level
+      : bar.low <= level && bar.close > level;
+
+    if (!tracker.active && reentry) {
+      tracker.active = createSignal(tracker, index, direction);
+    }
+
+    const signal = tracker.active;
+    if (!signal) {
+      tracker.lastEvidence = null;
+      return;
+    }
+
+    const invalidSide = direction < 0 ? bar.close > level : bar.close < level;
+    if (invalidSide) {
+      const status = signal.status === "PENDING"
+        ? "INVALIDATED_BEFORE_CONFIRMATION"
+        : signal.successfulAt === null ? "FAILED_AFTER_CONFIRMATION" : "SUCCESS_THEN_REVERSED";
+      archiveSignal(tracker, signal, status, index);
+      return;
+    }
+
+    const beyondConfirmLine = direction * (bar.close - confirmLine) > 0;
+    signal.consecutive = beyondConfirmLine ? signal.consecutive + 1 : 0;
+    signal.currentDistance = Math.max(0, direction * (bar.close - level) / levels.atr);
+    signal.maxDistance = Math.max(signal.maxDistance, signal.currentDistance);
+    const barsPassed = signal.consecutive >= config.bars;
+    const distancePassed = signal.currentDistance >= config.distance;
+    tracker.lastEvidence = { barsPassed, distancePassed, bars: signal.consecutive, distance: signal.currentDistance };
+
+    if (signal.status === "PENDING" && confirmationPassed(config, barsPassed, distancePassed)) {
+      signal.status = "CONFIRMED";
+      signal.confirmedAt = index;
+    }
+
+    const targetReached = direction * (bar.close - target) >= 0;
+    if ((signal.status === "CONFIRMED" || signal.status === "SUCCESSFUL") && targetReached) {
+      signal.status = "SUCCESSFUL";
+      if (signal.successfulAt === null) signal.successfulAt = index;
+    }
+  }
+
+  function runEngine(bars, lastIndex, levels, config) {
+    const machine = {
+      breakouts: {
+        up: newTracker("CUP-B"),
+        down: newTracker("CDN-B")
+      },
+      rejections: {
+        aUp: newTracker("AUP-R"),
+        cUp: newTracker("CUP-R"),
+        aDown: newTracker("ADN-R"),
+        cDown: newTracker("CDN-R")
+      },
+      eventCounts: {},
+      eventHistory: [],
+      contextFlips: 0,
+      locationFlips: 0,
+      lastStrongDirection: 0,
+      lastLocationDirection: 0,
+      current: null
+    };
+
+    for (let index = 0; index <= lastIndex; index += 1) {
+      const facts = factualEvents(index, bars, levels);
+      facts.events.forEach((eventName) => {
+        machine.eventCounts[eventName] = (machine.eventCounts[eventName] || 0) + 1;
+      });
+      machine.eventHistory.push(facts.events);
+
+      const locationDirection = facts.state.code >= 2 ? 1 : facts.state.code <= -2 ? -1 : 0;
+      if (locationDirection) {
+        if (machine.lastLocationDirection && machine.lastLocationDirection !== locationDirection) machine.locationFlips += 1;
+        machine.lastLocationDirection = locationDirection;
+      }
+
+      processBreakout(machine, "up", index, bars[index], levels, config);
+      processBreakout(machine, "down", index, bars[index], levels, config);
+      Object.keys(rejectionDefinitions).forEach((key) => processRejection(machine, key, index, bars[index], levels, config));
+      machine.current = facts;
+    }
+    return machine;
+  }
+
+  function latestSignal(tracker) {
+    if (tracker.active) return tracker.active;
+    return tracker.history.length ? tracker.history[tracker.history.length - 1] : null;
+  }
+
+  function endedSignalCount(machine) {
+    const allTrackers = [
+      machine.breakouts.up,
+      machine.breakouts.down,
+      machine.rejections.aUp,
+      machine.rejections.cUp,
+      machine.rejections.aDown,
+      machine.rejections.cDown
+    ];
+    return allTrackers.reduce((total, tracker) => total + tracker.history.filter((signal) =>
+      signal.status === "INVALIDATED_BEFORE_CONFIRMATION" ||
+      signal.status === "FAILED_AFTER_CONFIRMATION" ||
+      signal.status === "SUCCESS_THEN_REVERSED"
+    ).length, 0);
+  }
+
+  function signalEvidence(signal, evidence, config) {
+    if (!signal) return "No candidate yet";
+    if (!evidence) return signal.status;
+    const barMark = evidence.barsPassed ? "✓" : "·";
+    const distanceMark = evidence.distancePassed ? "✓" : "·";
+    return "closes " + evidence.bars + "/" + config.bars + " " + barMark +
+      " (rule window " + (config.bars * config.interval) + " min)" +
+      " · distance " + evidence.distance.toFixed(2) + "/" + config.distance.toFixed(2) + " ATR " + distanceMark +
+      " · " + confirmationJoin(config) + " ⇒ " + signal.status;
+  }
+
+  function levelLabel(property) {
+    const labels = { aUp: "A_UP", aDown: "A_DOWN", cUp: "C_UP", cDown: "C_DOWN", orHigh: "OR_HIGH", orLow: "OR_LOW" };
+    return labels[property];
+  }
+
+  function focusOutput(scenario, machine, config) {
+    if (scenario.focus === "touch") {
+      const label = levelLabel(scenario.meta.level);
+      const count = Object.entries(machine.eventCounts).reduce((total, entry) => total + (entry[0].includes(label) ? entry[1] : 0), 0);
+      const tracker = machine.rejections[scenario.meta.level];
+      const candidate = tracker ? latestSignal(tracker) : null;
+      return {
+        rule: label + " observation count " + count + " · touch/shadow alone is not confirmation",
+        lifecycle: candidate && candidate.status === "PENDING"
+          ? candidate.id + " · REJECTION_PENDING · reliability unchanged"
+          : "Observation only · no resolved signal · reliability unchanged"
+      };
+    }
+
+    if (scenario.focus === "rejection") {
+      const tracker = machine.rejections[scenario.meta.level];
+      const signal = latestSignal(tracker);
+      return {
+        rule: levelLabel(scenario.meta.level) + " rejection · " + signalEvidence(signal, tracker.lastEvidence, config),
+        lifecycle: signal ? signal.id + " · " + signal.status : "Waiting for touch + re-entry"
+      };
+    }
+
+    if (scenario.focus === "breakout" || scenario.focus === "failed") {
+      const tracker = scenario.meta.direction > 0 ? machine.breakouts.up : machine.breakouts.down;
+      const signal = latestSignal(tracker);
+      const label = scenario.meta.direction > 0 ? "C_UP" : "C_DOWN";
+      return {
+        rule: label + " breakout · " + signalEvidence(signal, tracker.lastEvidence, config),
+        lifecycle: signal
+          ? signal.id + " · " + signal.status + " · max extension " + signal.maxDistance.toFixed(2) + " ATR"
+          : "Waiting for first completed close beyond " + label
+      };
+    }
+
+    if (scenario.focus === "reversal" && scenario.meta.kind === "c") {
+      const up = latestSignal(machine.breakouts.up);
+      const down = latestSignal(machine.breakouts.down);
+      return {
+        rule: "C_UP " + (up ? up.status : "NONE") + " → C_DOWN " + (down ? down.status : "NONE") +
+          " · symmetric confirmation applied to both sides",
+        lifecycle: (up ? up.id + " " + up.status : "no C_UP signal") + " | " +
+          (down ? down.id + " " + down.status : "no C_DOWN signal")
+      };
+    }
+
+    if (scenario.focus === "reversal") {
+      return {
+        rule: "A-side state transition · strong context waits for a confirmed C break",
+        lifecycle: "Directional location flips " + machine.locationFlips + " · no forced C signal"
+      };
+    }
+
+    const ended = endedSignalCount(machine);
+    const whipsawScore = ended + machine.locationFlips;
+    return {
+      rule: "Whipsaw evidence = " + ended + " invalid/failed lifecycle(s) + " + machine.locationFlips + " directional flip(s)",
+      lifecycle: whipsawScore >= 3 ? "CHOPPY_CONTEXT_ACTIVE · score " + whipsawScore : "CHOPPY_PENDING · score " + whipsawScore
+    };
+  }
+
+  function deriveContext(machine) {
+    const activeBreakouts = [machine.breakouts.up.active, machine.breakouts.down.active]
+      .filter((signal) => signal && (signal.status === "CONFIRMED" || signal.status === "SUCCESSFUL"))
+      .sort((a, b) => (b.confirmedAt || 0) - (a.confirmedAt || 0));
+
+    let score = 0;
+    let reason = "neutral location";
+    if (activeBreakouts.length) {
+      score = 2 * activeBreakouts[0].direction;
+      reason = activeBreakouts[0].direction > 0 ? "confirmed C_UP" : "confirmed C_DOWN";
+    } else {
+      const activeRejections = Object.values(machine.rejections)
+        .map((tracker) => tracker.active)
+        .filter((signal) => signal && (signal.status === "CONFIRMED" || signal.status === "SUCCESSFUL"))
+        .sort((a, b) => (b.confirmedAt || 0) - (a.confirmedAt || 0));
+      if (activeRejections.length) {
+        score = activeRejections[0].direction;
+        reason = activeRejections[0].direction > 0 ? "confirmed lower rejection" : "confirmed upper rejection";
+      } else if (machine.current.state.code >= 2) {
+        score = 1;
+        reason = "bullish A-side location, not C-confirmed";
+      } else if (machine.current.state.code <= -2) {
+        score = -1;
+        reason = "bearish A-side location, not C-confirmed";
+      }
+    }
+
+    const labels = { "-2": "STRONG_BEARISH", "-1": "BEARISH", "0": "NEUTRAL", "1": "BULLISH", "2": "STRONG_BULLISH" };
+    return labels[String(score)] + " (" + (score > 0 ? "+" : "") + score + ") · " + reason +
+      " · confirmed context flips " + machine.contextFlips + " · location flips " + machine.locationFlips;
+  }
+
+  function selectedScenario() {
+    return scenarios.find((scenario) => scenario.id === root.querySelector("#acd-scenario").value);
+  }
+
+  function populateScenarios(preferredId) {
+    const family = root.querySelector("#acd-family").value;
+    const select = root.querySelector("#acd-scenario");
+    const available = scenarios.filter((scenario) => scenario.group === family);
+    select.replaceChildren();
+    available.forEach((scenario) => {
+      const option = document.createElement("option");
+      option.value = scenario.id;
+      option.textContent = scenario.label;
+      select.appendChild(option);
+    });
+    if (preferredId && available.some((scenario) => scenario.id === preferredId)) select.value = preferredId;
+  }
+
+  function resetStep() {
+    const scenario = selectedScenario();
+    const slider = root.querySelector("#acd-lab-step");
+    slider.max = String(scenario.points.length - 1);
+    slider.value = String(Math.min(scenario.defaultStep, scenario.points.length - 1));
+  }
+
+  function zoneLabelPositions(zones, yScale, top, bottom) {
+    const positions = zones.map((zone) => ({ desired: (yScale(zone.top) + yScale(zone.bottom)) / 2 }));
+    const separation = 18;
+    positions[0].placed = Math.max(top + 8, positions[0].desired);
+    for (let index = 1; index < positions.length; index += 1) {
+      positions[index].placed = Math.max(positions[index].desired, positions[index - 1].placed + separation);
+    }
+    if (positions[positions.length - 1].placed > bottom - 8) {
+      positions[positions.length - 1].placed = bottom - 8;
+      for (let index = positions.length - 2; index >= 0; index -= 1) {
+        positions[index].placed = Math.min(positions[index].placed, positions[index + 1].placed - separation);
+      }
+    }
+    return positions.map((position) => position.placed);
+  }
+
+  function formatTime(index, interval) {
+    const totalMinutes = 10 * 60 + index * interval;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+  }
+
+  function render() {
+    const scenario = selectedScenario();
+    if (!scenario) return;
+    const levels = environment();
+    const bars = buildBars(scenario, levels);
+    const slider = root.querySelector("#acd-lab-step");
+    const step = Math.min(Number(slider.value), bars.length - 1);
+    const config = confirmationConfig();
+    const machine = runEngine(bars, step, levels, config);
+    const focus = focusOutput(scenario, machine, config);
+
+    const width = Math.max(320, Math.min(760, Math.round(root.getBoundingClientRect().width || 736)));
+    const height = Math.round(Math.max(390, Math.min(420, width * 0.55)));
+    const margin = width < 520
+      ? { top: 24, right: 72, bottom: 42, left: 105 }
+      : { top: 24, right: 112, bottom: 42, left: 172 };
+    const plotWidth = Math.max(120, width - margin.left - margin.right);
+    const plotHeight = height - margin.top - margin.bottom;
+    chart.setAttribute("viewBox", "0 0 " + width + " " + height);
+
+    const allValues = [levels.cUp, levels.cDown];
+    bars.forEach((bar) => allValues.push(bar.high, bar.low));
+    const yMin = Math.min(...allValues) - 0.06 * levels.atr;
+    const yMax = Math.max(...allValues) + 0.06 * levels.atr;
+    const x = (index) => margin.left + (index + 0.5) * (plotWidth / bars.length);
+    const y = (value) => margin.top + (yMax - value) / (yMax - yMin) * plotHeight;
+
+    const groups = ["zones", "grid", "levels", "candles", "marker", "axis"]
+      .map((name) => root.querySelector("#acd-lab-" + name));
+    groups.forEach(clear);
+    const [zoneGroup, gridGroup, levelGroup, candleGroup, markerGroup, axisGroup] = groups;
+
+    const zones = [
+      { top: yMax, bottom: levels.cUp, full: "ABOVE_C_UP", short: "> C+", tone: "up" },
+      { top: levels.cUp, bottom: levels.aUp, full: "A_UP_TO_C_UP", short: "A+–C+", tone: "up" },
+      { top: levels.aUp, bottom: levels.orHigh, full: "OR_HIGH_TO_A_UP", short: "ORH–A+", tone: "neutral" },
+      { top: levels.orHigh, bottom: levels.orLow, full: "INSIDE_OR", short: "OR", tone: "or" },
+      { top: levels.orLow, bottom: levels.aDown, full: "A_DOWN_TO_OR_LOW", short: "A−–ORL", tone: "neutral" },
+      { top: levels.aDown, bottom: levels.cDown, full: "C_DOWN_TO_A_DOWN", short: "C−–A−", tone: "down" },
+      { top: levels.cDown, bottom: yMin, full: "BELOW_C_DOWN", short: "< C−", tone: "down" }
+    ];
+    const placedLabels = zoneLabelPositions(zones, y, margin.top, margin.top + plotHeight);
+    zones.forEach((zone, index) => {
+      const topY = y(zone.top);
+      const bottomY = y(zone.bottom);
+      const fill = zone.tone === "up" ? "var(--viz-series-2)" : zone.tone === "down" ? "var(--viz-series-4)" : zone.tone === "or" ? "var(--acd-or)" : "var(--muted)";
+      zoneGroup.appendChild(svgEl("rect", {
+        x: margin.left,
+        y: topY,
+        width: plotWidth,
+        height: Math.max(0, bottomY - topY),
+        fill,
+        opacity: zone.tone === "neutral" ? 0.16 : 0.08
+      }));
+      const actualY = (topY + bottomY) / 2;
+      zoneGroup.appendChild(svgEl("line", {
+        x1: width < 520 ? 80 : 145,
+        y1: placedLabels[index],
+        x2: margin.left - 5,
+        y2: actualY,
+        class: "zone-leader"
+      }));
+      zoneGroup.appendChild(svgEl("text", {
+        x: 4,
+        y: placedLabels[index] + 4,
+        class: "zone-label"
+      }, width < 520 ? zone.short : zone.full));
+    });
+
+    for (let index = 0; index <= bars.length; index += 1) {
+      const gridX = margin.left + index * (plotWidth / bars.length);
+      gridGroup.appendChild(svgEl("line", { x1: gridX, y1: margin.top, x2: gridX, y2: margin.top + plotHeight, class: "grid-line" }));
+    }
+
+    lineDefinitions(levels).forEach((line) => {
+      const lineY = y(line.value);
+      if (line.kind === "c") {
+        levelGroup.appendChild(svgEl("line", { x1: margin.left, y1: lineY, x2: margin.left + plotWidth, y2: lineY, class: "c-line-underlay" }));
+      }
+      levelGroup.appendChild(svgEl("line", {
+        x1: margin.left,
+        y1: lineY,
+        x2: margin.left + plotWidth,
+        y2: lineY,
+        class: line.kind + "-line"
+      }));
+      levelGroup.appendChild(svgEl("text", {
+        x: margin.left + plotWidth + 6,
+        y: lineY + 4,
+        class: "level-label"
+      }, (width < 520 ? line.key.replace("OR_", "O") : line.key) + " " + line.value.toFixed(2)));
+    });
+
+    const visibleBars = bars.slice(0, step + 1);
+    const candleWidth = Math.max(4, Math.min(22, plotWidth / bars.length * 0.42));
+    visibleBars.forEach((bar, index) => {
+      const centerX = x(index);
+      candleGroup.appendChild(svgEl("line", { x1: centerX, y1: y(bar.high), x2: centerX, y2: y(bar.low), class: "wick" }));
+      const bodyTop = Math.min(y(bar.open), y(bar.close));
+      const bodyBottom = Math.max(y(bar.open), y(bar.close));
+      candleGroup.appendChild(svgEl("rect", {
+        x: centerX - candleWidth / 2,
+        y: bodyTop,
+        width: candleWidth,
+        height: Math.max(3, bodyBottom - bodyTop),
+        class: bar.close >= bar.open ? "candle-up" : "candle-down"
+      }));
+    });
+
+    const current = visibleBars[visibleBars.length - 1];
+    const currentX = x(step);
+    const currentY = y(current.close);
+    markerGroup.appendChild(svgEl("line", { x1: currentX, y1: margin.top, x2: currentX, y2: margin.top + plotHeight, class: "current-guide" }));
+    markerGroup.appendChild(svgEl("circle", { cx: currentX, cy: currentY, r: 9, class: "current-ring" }));
+    markerGroup.appendChild(svgEl("text", {
+      x: Math.min(currentX + 12, margin.left + plotWidth - 96),
+      y: Math.max(margin.top + 14, currentY - 12),
+      class: "marker-label"
+    }, "close " + current.close.toFixed(2)));
+
+    const labelEvery = width < 520 ? 3 : bars.length > 12 ? 2 : 1;
+    bars.forEach((bar, index) => {
+      if (index % labelEvery !== 0 && index !== bars.length - 1) return;
+      axisGroup.appendChild(svgEl("text", {
+        x: x(index),
+        y: margin.top + plotHeight + 26,
+        class: "time-label",
+        "text-anchor": "middle"
+      }, formatTime(index, config.interval)));
+    });
+
+    const bufferToOr = levels.bufferProfile.c / levels.orProfile.ratio;
+    root.querySelector("#acd-environment-metrics").textContent =
+      levels.orProfile.label + " × " + levels.bufferProfile.label +
+      " · candle " + config.interval + "m" +
+      " · OR/ATR " + levels.orProfile.ratio.toFixed(2) +
+      " · A gap " + levels.bufferProfile.a.toFixed(3) + " ATR" +
+      " · C gap " + levels.bufferProfile.c.toFixed(2) + " ATR" +
+      " · C-buffer/OR " + bufferToOr.toFixed(2);
+    root.querySelector("#acd-lab-step-label").textContent = formatTime(step, config.interval) + " · " + config.interval + "m bar";
+    root.querySelector("#acd-lab-state").textContent = machine.current.state.name + " · code " + (machine.current.state.code > 0 ? "+" : "") + machine.current.state.code;
+    root.querySelector("#acd-lab-event").textContent = machine.current.events.join(" · ");
+    root.querySelector("#acd-lab-rule").textContent = focus.rule;
+    root.querySelector("#acd-lab-lifecycle").textContent = focus.lifecycle;
+    root.querySelector("#acd-lab-context").textContent = deriveContext(machine);
+    root.querySelector("#acd-lab-desc").textContent = scenario.label + " using " + config.interval + "-minute candles in a " + levels.orProfile.label.toLowerCase() + " and " + levels.bufferProfile.label.toLowerCase() + " environment.";
+  }
+
+  function updateConfirmationControlState() {
+    const mode = root.querySelector("#acd-confirm-mode").value;
+    root.querySelector("#acd-confirm-bars").disabled = mode === "distance";
+    root.querySelector("#acd-confirm-distance").disabled = mode === "bars";
+  }
+
+  root.querySelector("#acd-family").addEventListener("change", () => {
+    populateScenarios();
+    resetStep();
+    render();
+  });
+  root.querySelector("#acd-scenario").addEventListener("change", () => {
+    resetStep();
+    render();
+  });
+  root.querySelector("#acd-candle-minutes").addEventListener("change", render);
+  root.querySelector("#acd-or-profile").addEventListener("change", render);
+  root.querySelector("#acd-buffer-profile").addEventListener("change", render);
+  root.querySelector("#acd-confirm-mode").addEventListener("change", () => {
+    updateConfirmationControlState();
+    render();
+  });
+  root.querySelector("#acd-confirm-bars").addEventListener("change", render);
+  root.querySelector("#acd-confirm-distance").addEventListener("change", render);
+  root.querySelector("#acd-lab-step").addEventListener("input", render);
+
+  populateScenarios("c-up-rejection");
+  resetStep();
+  updateConfirmationControlState();
+  render();
+
+  if (typeof ResizeObserver !== "undefined") {
+    let lastWidth = Math.round(root.getBoundingClientRect().width || 0);
+    const observer = new ResizeObserver(() => {
+      const nextWidth = Math.round(root.getBoundingClientRect().width || 0);
+      if (nextWidth && nextWidth !== lastWidth) {
+        lastWidth = nextWidth;
+        render();
+      }
+    });
+    observer.observe(root);
+  }
+})();
+</script>
+
+<script id="codex-visualization-floating-ui-core" src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"></script>
+<script id="codex-visualization-floating-ui-dom" src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"></script>
+<script id="codex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
+<script id="codex-visualization-tooltip">/* oxlint-disable typescript/no-unsafe-argument, typescript/no-unsafe-call, typescript/no-unsafe-return */
+// Runs inside the visualization sandbox, not the host webview.
+(() => {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set(["top", "right", "bottom", "left"]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =>
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest("[data-tooltip]")
+      : null;
+  const containsTarget = (trigger, target) =>
+    target?.nodeType != null && trigger.contains(target);
+  const getContent = (trigger) =>
+    trigger.getAttribute("data-tooltip")?.trim() ?? "";
+  const getPlacement = (trigger) => {
+    const placement = trigger.getAttribute("data-tooltip-placement");
+    return tooltipPlacements.has(placement) ? placement : "top";
+  };
+  const getTooltip = () => {
+    if (tooltip == null) {
+      tooltip = document.createElement("div");
+      tooltip.id = tooltipId;
+      tooltip.className = "tooltip";
+      tooltip.setAttribute("role", "tooltip");
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) => {
+    const ids = new Set(
+      (trigger.getAttribute("aria-describedby") ?? "")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute("aria-describedby");
+    } else {
+      trigger.setAttribute("aria-describedby", [...ids].join(" "));
+    }
+  };
+  const clearOpenTimeout = () => {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) => {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) => {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              "--tooltip-available-width",
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              "--tooltip-available-height",
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: "fixed",
+    })
+      .then(({ x, y }) => {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = "visible";
+      })
+      .catch(() => {
+        if (activeTrigger === trigger && request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) => {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = "hidden";
+    floating.style.transform = "translate(0, 0)";
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () => {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) => {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() < skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() => {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) => {
+    if (event.pointerType === "touch") {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) => {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) => {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(":focus-visible")) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) => {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () => {
+    closeTooltip(false);
+    document.removeEventListener("pointerover", handlePointerOpen);
+    document.removeEventListener("pointerout", handleLeave);
+    document.removeEventListener("focusin", handleFocusIn);
+    document.removeEventListener("focusout", handleLeave);
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("contextmenu", handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener("pointerover", handlePointerOpen);
+  document.addEventListener("pointerout", handleLeave);
+  document.addEventListener("focusin", handleFocusIn);
+  document.addEventListener("focusout", handleLeave);
+  document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("contextmenu", handleContextMenu);
+  window.addEventListener("pagehide", destroy, { once: true });
+})();
+</script>
+<script id="codex-visualization-lucide-initialization">(() => {
+  const initialize = () => {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById("codex-visualization-lucide")
+    ?.addEventListener("load", initialize, { once: true });
+})();
+</script>
+</body>
+</html>
