@@ -1,0 +1,49 @@
+# Milestone 1 — Concourse task config, Phase 05: configuration-integrity and
+# dependency audit. Validation only — no training, no train-control/
+# train-acd, no TEST inspection.
+#
+# Standalone Concourse TASK config, invoked from ci/concourse/pipeline.yml's
+# `phase05-verify-config-and-dependencies` job (gated on phase04 via
+# `passed:`). See pipeline.yml for the real resource/dependency wiring.
+#
+# scripts/run_phase5_integrity_audit.py's config-audit paths are NOT left at
+# their local defaults here: this container does not have the normal local
+# config/generated/ layout, only whatever Phase 04 persisted under the
+# generated-configs-phase4-data resource (mounted as
+# generated-configs-phase4-data/ below, containing exactly
+# pipeline_phase4_control.yaml and pipeline_phase4_acd.yaml — see
+# ci/concourse/phase04.yml). --canonical-config still reads
+# market-ml-repo's own committed config/pipeline.yaml.
+#
+# The audit's JSON report is written to the declared output below
+# (--report-root, already an existing CLI override — reports/phase5_integrity
+# remains the normal local default) so pipeline.yml can `put` it to a
+# persistent resource rather than discarding it at job end.
+
+platform: linux
+
+image_resource:
+  type: registry-image
+  source: { repository: python, tag: "3.11-slim" }
+
+inputs:
+  - name: market-ml-repo
+  - name: generated-configs-phase4-data
+
+outputs:
+  - name: phase5-integrity-reports-out
+
+run:
+  path: bash
+  dir: market-ml-repo
+  args:
+    - -c
+    - |
+      set -euo pipefail
+      pip install --quiet -r requirements-ci.txt
+
+      python scripts/run_phase5_integrity_audit.py --mode all \
+        --canonical-config config/pipeline.yaml \
+        --control-config ../generated-configs-phase4-data/pipeline_phase4_control.yaml \
+        --acd-config ../generated-configs-phase4-data/pipeline_phase4_acd.yaml \
+        --report-root ../phase5-integrity-reports-out

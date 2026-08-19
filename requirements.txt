@@ -2,3 +2,4 @@ pandas>=2.0
 PyYAML>=6.0
 pyarrow>=14.0
 exchange-calendars>=4.0
+numpy>=1.24

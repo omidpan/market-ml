@@ -27,7 +27,7 @@ run:
     - -c
     - |
       set -euo pipefail
-      pip install --quiet -r requirements.txt
+      pip install --quiet -r requirements-ci.txt
       python scripts/validate_phase1_contract.py
       pytest tests/test_state_machine_features.py \
         -k "forbidden or provenance or common_modeling_start" -v

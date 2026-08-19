@@ -1,0 +1,9 @@
+# Exact pins, not open-ended ranges: these are the TensorFlow/Keras
+# versions actually confirmed working for the existing baseline LSTM run
+# (nvda_core_v1_atr075_gpu_baseline_v1, on Google Colab GPU — see that run's
+# training_report.json: tensorflow_version=2.20.0, keras_version=3.13.2).
+# Do not bump these merely to pick up newer releases; only change them as
+# part of an explicit, separately reviewed training-stack upgrade.
+-r requirements.txt
+tensorflow==2.20.0
+keras==3.13.2

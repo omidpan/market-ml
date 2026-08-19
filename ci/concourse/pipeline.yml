@@ -141,6 +141,11 @@ resources:
     type: local-data-volume
     source: { path: config/generated/phase4 }
 
+  # Phase-05 persistent output: the machine-readable integrity-audit report.
+  - name: phase5-integrity-reports-data
+    type: local-data-volume
+    source: { path: reports/phase5_integrity }
+
 jobs:
   - name: phase01-contract-validation
     plan:
@@ -230,3 +235,24 @@ jobs:
   # A later comparison step consuming Colab-produced model/results is not
   # solved here — out of scope for the Phase-04 pre-training artifact
   # contract established by this job.
+
+  - name: phase05-verify-config-and-dependencies
+    plan:
+      - get: market-ml-repo
+        trigger: true
+        passed: [phase04-prepare-control-vs-acd]
+      - get: generated-configs-phase4-data
+        passed: [phase04-prepare-control-vs-acd]
+      - task: phase05-audit
+        file: market-ml-repo/ci/concourse/phase05.yml
+        input_mapping:
+          market-ml-repo: market-ml-repo
+          generated-configs-phase4-data: generated-configs-phase4-data
+        output_mapping:
+          phase5-integrity-reports-out: phase5-integrity-reports-data
+      - put: phase5-integrity-reports-data
+        params: { path: phase5-integrity-reports-data }
+
+  # No phase06+/training jobs exist here. This pipeline's scope ends at
+  # Phase 05 (validation-only). Full LSTM training happens on Google Colab
+  # GPU, invoked by a human separately from this Concourse pipeline.
