@@ -35,16 +35,22 @@ import argparse
 import hashlib
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as pa_dataset
+import pyarrow.parquet as pq
 
 
 VERSION = "1.1.0"
 POLICY_TYPE = "atr_relative_3class"
 POLICY_VERSION = "v1"
+ARTIFACT_CONTRACT_VERSION = "v2"
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +205,170 @@ def load_feature_ohlc(
     return df
 
 
+def _partition_year_month(path: Path) -> tuple[int, int] | None:
+    """
+    Best-effort extraction of (year, month) from a `year=YYYY/month=MM`
+    partition path component. Returns None if the path doesn't follow that
+    convention — callers must treat None as "cannot skip this file", not
+    as an error; the Arrow-level row filter remains fully correct and
+    sufficient either way. This is purely a whole-file skip optimization,
+    never a substitute for the row-level predicate.
+    """
+    year = None
+    month = None
+    for part in path.parts:
+        if part.startswith("year="):
+            try:
+                year = int(part.split("=", 1)[1])
+            except ValueError:
+                return None
+        elif part.startswith("month="):
+            try:
+                month = int(part.split("=", 1)[1])
+            except ValueError:
+                return None
+    if year is None or month is None:
+        return None
+    return (year, month)
+
+
+def load_feature_ohlc_bounded(
+    feature_root: Path,
+    symbol: str,
+    *,
+    max_trading_date,
+) -> pd.DataFrame:
+    """
+    v2 build-path counterpart to `load_feature_ohlc`. `features_1m` has no
+    split column at all — it is the continuous, pre-split causal series,
+    same status as `features_root` in `model_matrix.py`. Causal Wilder ATR
+    is strictly backward-looking (a TRAIN/VALIDATION row's ATR value never
+    depends on a future, TEST-period bar), so truncating this read at the
+    TRAIN+VALIDATION boundary produces identical ATR values for every
+    retained row while never reading a TEST-period OHLC bar into Python at
+    all.
+
+    Whole files entirely beyond `max_trading_date`'s month are skipped
+    without being opened at all (best-effort, via partition-path parsing).
+    Every file that is opened is read through an Arrow-level
+    predicate-pushdown filter (`trading_date <= max_trading_date`) inside
+    `pyarrow.dataset(...).to_table(filter=...)`, evaluated before
+    `.to_pandas()` — never a plain unfiltered read followed by a pandas
+    filter.
+    """
+    print(
+        "\n[features] Loading features_1m OHLC "
+        f"(v2, bounded at trading_date <= {max_trading_date})..."
+    )
+
+    files = symbol_parquet_files(feature_root, symbol)
+
+    boundary_year_month = (
+        max_trading_date.year,
+        max_trading_date.month,
+    )
+
+    columns = [
+        "prediction_time",
+        "source_id",
+        "high",
+        "low",
+        "close",
+        "is_current_bar_usable",
+        "session",
+        "trading_date",
+    ]
+
+    frames: list[pd.DataFrame] = []
+    skipped = 0
+    opened = 0
+
+    for i, path in enumerate(files, 1):
+        year_month = _partition_year_month(path)
+        if (
+            year_month is not None
+            and year_month > boundary_year_month
+        ):
+            skipped += 1
+            continue
+
+        dataset = pa_dataset.dataset(
+            path,
+            format="parquet",
+            partitioning=None,
+        )
+
+        bound = pa.scalar(
+            max_trading_date,
+            type=dataset.schema.field(
+                "trading_date"
+            ).type,
+        )
+
+        table = dataset.to_table(
+            columns=columns,
+            filter=(
+                pc.field("trading_date")
+                <= bound
+            ),
+        )
+
+        opened += 1
+
+        if table.num_rows:
+            out = table.to_pandas()
+            if (
+                out["trading_date"].max()
+                > max_trading_date
+            ):
+                raise AssertionError(
+                    f"{path}: predicate-pushdown filter failed to "
+                    "exclude rows beyond max_trading_date."
+                )
+            frames.append(out)
+
+        if i % 20 == 0 or i == len(files):
+            print(
+                f"  features: scanned {i:>3}/{len(files)} files "
+                f"(opened={opened}, skipped_whole_file={skipped})"
+            )
+
+    if not frames:
+        raise RuntimeError(
+            "No features_1m rows survived the TRAIN+VALIDATION boundary "
+            "filter."
+        )
+
+    df = pd.concat(frames, ignore_index=True)
+
+    df["_ts"] = utc_ns(df["prediction_time"])
+    df["source_id"] = df["source_id"].astype(str)
+
+    for col in ["high", "low", "close"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["is_current_bar_usable"] = (
+        df["is_current_bar_usable"]
+        .fillna(False)
+        .astype(bool)
+    )
+
+    df = (
+        df.sort_values(["source_id", "_ts"], kind="stable")
+        .reset_index(drop=True)
+    )
+
+    dup = df.duplicated(["source_id", "_ts"])
+    if dup.any():
+        raise RuntimeError(
+            f"Duplicate features_1m endpoint keys: {int(dup.sum()):,}"
+        )
+
+    print(f"Feature rows (bounded): {len(df):,}")
+
+    return df
+
+
 def compute_wilder_atr(
     features: pd.DataFrame,
     period: int,
@@ -342,60 +512,45 @@ def compute_wilder_atr(
 # Model-ready sequence loading
 # ---------------------------------------------------------------------------
 
-def load_sequences(root: Path, symbol: str) -> pd.DataFrame:
-    print("\n[sequences] Loading all model-ready sequence rows...")
+SEQUENCE_REQUIRED_INPUT_COLUMNS = [
+    "prediction_time",
+    "source_id",
+    "split",
+    "session",
+    "trading_date",
+    "target_log_return",
+    "target_return_bps",
+]
 
-    files = symbol_parquet_files(root, symbol)
+SEQUENCE_OPTIONAL_INPUT_COLUMNS = [
+    "model_sample_index",
+    "sample_index",
+    "symbol",
+    "calendar_date",
+    "target_realized_at",
+    "target_direction",
+    "target_same_session",
+    "target_same_trading_date",
+    "feature_set",
+    "feature_signature",
+    "sequence_length",
+    "target_horizon_minutes",
+    "stride_minutes",
+    "sequence_scope",
+]
 
-    # Read only one file to discover schema.
-    first_columns = list(pd.read_parquet(files[0]).columns)
 
-    required = [
-        "prediction_time",
-        "source_id",
-        "split",
-        "session",
-        "trading_date",
-        "target_log_return",
-        "target_return_bps",
-    ]
-
-    missing = sorted(set(required) - set(first_columns))
-    if missing:
-        raise RuntimeError(
-            f"Sequence Parquet missing required columns: {missing}"
-        )
-
-    optional = [
-        "model_sample_index",
-        "sample_index",
-        "symbol",
-        "calendar_date",
-        "target_realized_at",
-        "target_direction",
-        "target_same_session",
-        "target_same_trading_date",
-        "feature_set",
-        "feature_signature",
-        "sequence_length",
-        "target_horizon_minutes",
-        "stride_minutes",
-        "sequence_scope",
-    ]
-
-    columns = required + [
-        col for col in optional if col in first_columns
-    ]
-
-    frames: list[pd.DataFrame] = []
-
-    for i, path in enumerate(files, 1):
-        frames.append(pd.read_parquet(path, columns=columns))
-        if i % 20 == 0 or i == len(files):
-            print(f"  sequences: loaded {i:>3}/{len(files)} files")
-
-    df = pd.concat(frames, ignore_index=True)
-
+def _normalize_sequences_frame(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Shared normalization/validation for a concatenated sequence-endpoint
+    frame, regardless of how its rows were read (unfiltered
+    `pd.read_parquet`, for v1's `load_sequences`, or an Arrow-filtered
+    TRAIN+VALIDATION-only read, for v2's `load_sequences_trainval_v2`).
+    Pure extraction of v1's existing logic — behavior for any given input
+    frame is unchanged.
+    """
     df["source_id"] = df["source_id"].astype(str)
     df["_ts"] = utc_ns(df["prediction_time"])
 
@@ -437,6 +592,158 @@ def load_sequences(root: Path, symbol: str) -> pd.DataFrame:
         print(f"  {name:>10}: {int(count):,}")
 
     return df
+
+
+def load_sequences(root: Path, symbol: str) -> pd.DataFrame:
+    print("\n[sequences] Loading all model-ready sequence rows...")
+
+    files = symbol_parquet_files(root, symbol)
+
+    # Read only one file to discover schema.
+    first_columns = list(pd.read_parquet(files[0]).columns)
+
+    missing = sorted(
+        set(SEQUENCE_REQUIRED_INPUT_COLUMNS) - set(first_columns)
+    )
+    if missing:
+        raise RuntimeError(
+            f"Sequence Parquet missing required columns: {missing}"
+        )
+
+    columns = SEQUENCE_REQUIRED_INPUT_COLUMNS + [
+        col
+        for col in SEQUENCE_OPTIONAL_INPUT_COLUMNS
+        if col in first_columns
+    ]
+
+    frames: list[pd.DataFrame] = []
+
+    for i, path in enumerate(files, 1):
+        frames.append(pd.read_parquet(path, columns=columns))
+        if i % 20 == 0 or i == len(files):
+            print(f"  sequences: loaded {i:>3}/{len(files)} files")
+
+    df = pd.concat(frames, ignore_index=True)
+
+    return _normalize_sequences_frame(df)
+
+
+def load_sequences_trainval_v2(
+    root: Path,
+    symbol: str,
+) -> pd.DataFrame:
+    """
+    Fail-closed v2 sequence-endpoint reader. Unlike `load_sequences` (v1,
+    unfiltered — reads and materializes every column, including
+    `target_log_return`/`target_return_bps`, for every row before
+    anything is checked), this function never projects a target/value
+    column into Python until every file has been structurally proven
+    TEST-free.
+
+    STEP 1 — structural-only precheck: project ONLY the `split` column,
+    per file, via `pyarrow.dataset`. Require the physical split values to
+    be a subset of {"train", "validation"}. Fail immediately — before any
+    target/value column is projected or converted to pandas, for any
+    file — on "test", any other unexpected value, or a null/invalid split.
+
+    STEP 2 — only after STEP 1 passes for every file, read the full
+    required+optional column set via `dataset.to_table(filter=...)` with
+    an Arrow predicate equivalent to `split == "train" OR split ==
+    "validation"`, evaluated inside the Arrow scanner before
+    `.to_pandas()`. Defense in depth on top of STEP 1, not a substitute.
+
+    STEP 3 — the resulting concatenated pandas frame is passed through the
+    same `_normalize_sequences_frame` validation/normalization v1 uses.
+    """
+    print(
+        "\n[sequences] Loading model-ready TRAIN+VALIDATION sequence rows "
+        "(v2, fail-closed)..."
+    )
+
+    files = symbol_parquet_files(root, symbol)
+
+    first_columns = list(
+        pq.read_schema(files[0]).names
+    )
+
+    missing = sorted(
+        set(SEQUENCE_REQUIRED_INPUT_COLUMNS) - set(first_columns)
+    )
+    if missing:
+        raise RuntimeError(
+            f"Sequence Parquet missing required columns: {missing}"
+        )
+
+    columns = SEQUENCE_REQUIRED_INPUT_COLUMNS + [
+        col
+        for col in SEQUENCE_OPTIONAL_INPUT_COLUMNS
+        if col in first_columns
+    ]
+
+    frames: list[pd.DataFrame] = []
+
+    for i, path in enumerate(files, 1):
+        dataset = pa_dataset.dataset(
+            path,
+            format="parquet",
+            partitioning=None,
+        )
+
+        # STEP 1: structural-only precheck. No target/value column is
+        # projected or touched here.
+        split_table = dataset.to_table(
+            columns=["split"]
+        )
+        observed_splits = set(
+            split_table.column(
+                "split"
+            ).to_pylist()
+        )
+
+        if None in observed_splits:
+            raise AssertionError(
+                f"{path}: null/invalid split value(s) present — "
+                "refusing to read target/value columns."
+            )
+
+        disallowed = (
+            observed_splits
+            - {"train", "validation"}
+        )
+        if disallowed:
+            raise AssertionError(
+                f"{path}: v2 sequence input contains disallowed split "
+                f"value(s) {sorted(disallowed)} — refusing to read "
+                "target/value columns. This artifact is not a valid "
+                "model_matrix.py v2 TRAINVAL-only output."
+            )
+
+        # STEP 2: only now, an Arrow-filtered read of the full required
+        # column set (including target VALUES), filtered inside the
+        # scanner.
+        table = dataset.to_table(
+            columns=columns,
+            filter=(
+                (pc.field("split") == "train")
+                | (
+                    pc.field("split")
+                    == "validation"
+                )
+            ),
+        )
+
+        frames.append(table.to_pandas())
+
+        if i % 20 == 0 or i == len(files):
+            print(
+                f"  sequences: loaded {i:>3}/{len(files)} files "
+                "(fail-closed precheck PASS on all so far)"
+            )
+
+    df = pd.concat(frames, ignore_index=True)
+
+    # STEP 3: shared normalization/validation, identical to v1's.
+    return _normalize_sequences_frame(df)
 
 
 # ---------------------------------------------------------------------------
@@ -668,6 +975,34 @@ def validate_table(
     print("Validation: PASS")
 
 
+def validate_trainval_only(df: pd.DataFrame) -> None:
+    """
+    v2 defense-in-depth check, independent of `load_sequences_trainval_v2`'s
+    own fail-closed read: explicit, fail-closed confirmation that the fully
+    labeled output frame contains no split value other than
+    {"train", "validation"} immediately before it is written. Do not rely
+    only on the upstream reader as an implicit guarantee.
+    """
+    observed = set(
+        df["split"].astype(str).str.lower().unique()
+    )
+
+    disallowed = observed - {"train", "validation"}
+    if disallowed:
+        raise AssertionError(
+            f"v2 labeled output contains disallowed split value(s) "
+            f"{sorted(disallowed)} immediately before write."
+        )
+
+    if (df["split"].astype(str).str.lower() == "test").any():
+        raise AssertionError(
+            "v2 labeled output contains split == 'test' rows "
+            "immediately before write."
+        )
+
+    print("TRAIN+VALIDATION-only validation: PASS")
+
+
 def class_distribution(df: pd.DataFrame) -> dict:
     total = len(df)
     result: dict[str, dict[str, float | int]] = {}
@@ -892,6 +1227,117 @@ def write_artifact(
     return files_written
 
 
+def verify_trainval_label_artifact(
+    out_root: Path,
+    *,
+    expected_policy_signature: str,
+) -> dict:
+    """
+    Reusable, persistent verification (importable by Phase 5, not an
+    ad-hoc scratch check) for an already-written v2 label-policy artifact.
+    Reads back only the structural `split` and `policy_signature` columns
+    first — never a target/label value — to prove, fail-closed:
+
+      - zero rows with split == "test";
+      - split values are a subset of {"train", "validation"};
+      - no duplicate (source_id, prediction_time) keys;
+      - the artifact's policy_signature is byte-identical to
+        `expected_policy_signature` (policy semantics unchanged).
+
+    Returns a result dict with counts and a `passed` flag; raises
+    AssertionError immediately on any TEST row found.
+    """
+    files = sorted(out_root.rglob("*.parquet"))
+    if not files:
+        raise FileNotFoundError(
+            f"No Parquet files found under {out_root}"
+        )
+
+    total_rows = 0
+    test_rows = 0
+    disallowed_splits: set[str] = set()
+    signatures: set[str] = set()
+    key_frames: list[pd.DataFrame] = []
+
+    for path in files:
+        dataset = pa_dataset.dataset(
+            path,
+            format="parquet",
+            partitioning=None,
+        )
+
+        structural = dataset.to_table(
+            columns=[
+                "source_id",
+                "prediction_time",
+                "split",
+                "policy_signature",
+            ]
+        ).to_pandas()
+
+        total_rows += len(structural)
+
+        splits = set(
+            structural["split"]
+            .astype(str)
+            .str.lower()
+            .unique()
+        )
+        test_rows += int(
+            (
+                structural["split"]
+                .astype(str)
+                .str.lower()
+                == "test"
+            ).sum()
+        )
+        disallowed_splits |= (
+            splits - {"train", "validation"}
+        )
+        signatures |= set(
+            structural["policy_signature"].unique()
+        )
+
+        key_frames.append(
+            structural[
+                ["source_id", "prediction_time"]
+            ]
+        )
+
+    keys = pd.concat(key_frames, ignore_index=True)
+    duplicate_keys = int(
+        keys.duplicated().sum()
+    )
+
+    signature_matches = signatures == {
+        expected_policy_signature
+    }
+
+    passed = (
+        test_rows == 0
+        and not disallowed_splits
+        and duplicate_keys == 0
+        and signature_matches
+    )
+
+    if test_rows > 0:
+        raise AssertionError(
+            f"{out_root}: {test_rows} TEST row(s) found in a v2 "
+            "trainval-only label-policy artifact."
+        )
+
+    return {
+        "total_rows": total_rows,
+        "test_rows": test_rows,
+        "disallowed_splits": sorted(disallowed_splits),
+        "duplicate_keys": duplicate_keys,
+        "observed_policy_signatures": sorted(signatures),
+        "expected_policy_signature": expected_policy_signature,
+        "policy_signature_matches": signature_matches,
+        "passed": passed,
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -1012,6 +1458,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help=(
+            "Explicit opt-in to the frozen v1 build path: reads "
+            "--model-matrix-root's sequence rows unfiltered (all splits, "
+            "including TEST) and computes ATR over the full features_1m "
+            "history. Without this flag, the v2 build path runs by "
+            "default: --model-matrix-root must point at a "
+            "TRAIN+VALIDATION-only sequences/ artifact (e.g. "
+            "model_matrix.py v2's output), the sequence reader fails "
+            "closed on any TEST/unexpected split value before reading "
+            "target/value columns, and the features_1m OHLC read is "
+            "bounded to the TRAIN+VALIDATION boundary."
+        ),
+    )
+
+    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {VERSION}",
@@ -1088,6 +1551,7 @@ def main() -> None:
     print(f"Multiplier: {args.multiplier}")
     print("Input Parquet impact: READ-ONLY")
     print(f"Write enabled: {args.write}")
+    print(f"Legacy v1 mode: {args.legacy_v1}")
     print(f"Feature root: {feature_root}")
     print(f"Sequence root: {seq_root}")
     print(f"Output root: {out_root}")
@@ -1095,31 +1559,8 @@ def main() -> None:
     if args.write:
         refuse_existing_artifact(out_root)
 
-    # 1. Read frozen feature rows and compute causal ATR.
-    features = load_feature_ohlc(
-        feature_root,
-        symbol,
-    )
-
-    features = compute_wilder_atr(
-        features,
-        args.atr_period,
-    )
-
-    # 2. Read all frozen model-ready sequence endpoints.
-    sequences = load_sequences(
-        seq_root,
-        symbol,
-    )
-
-    # 3. Exact endpoint join.
-    joined = join_atr(
-        features,
-        sequences,
-        args.atr_period,
-    )
-
-    # 4. Freeze metadata/signature and materialize deterministic labels.
+    # Metadata/signature are frozen before any data is touched, identically
+    # for v1 and v2 — policy semantics never change based on artifact scope.
     metadata = make_policy_metadata(
         args,
         symbol,
@@ -1131,31 +1572,160 @@ def main() -> None:
 
     print(f"\nPolicy signature: {signature}")
 
-    labeled = apply_policy(
-        joined,
-        args,
-        signature,
-    )
+    if args.legacy_v1:
+        print(
+            "--legacy-v1 explicitly requested: running the frozen v1 "
+            "build path. This reads and can write label VALUES for every "
+            "split, including TEST. Do not point a trainer at this "
+            "output."
+        )
 
-    # 5. Validate before any write is possible.
-    validate_table(
-        labeled,
-        expected_rows=len(sequences),
-        period=args.atr_period,
-    )
+        # 1. Read frozen feature rows and compute causal ATR (full
+        #    history, unbounded).
+        features = load_feature_ohlc(
+            feature_root,
+            symbol,
+        )
+        features = compute_wilder_atr(
+            features,
+            args.atr_period,
+        )
 
-    train_dist = print_train_distribution(
-        labeled
-    )
+        # 2. Read all frozen model-ready sequence endpoints (unfiltered,
+        #    all splits).
+        sequences = load_sequences(
+            seq_root,
+            symbol,
+        )
 
-    report = build_report(
-        labeled,
-        args,
-        metadata,
-        signature,
-        out_root,
-        train_dist,
-    )
+        # 3. Exact endpoint join.
+        joined = join_atr(
+            features,
+            sequences,
+            args.atr_period,
+        )
+
+        labeled = apply_policy(
+            joined,
+            args,
+            signature,
+        )
+
+        validate_table(
+            labeled,
+            expected_rows=len(sequences),
+            period=args.atr_period,
+        )
+
+        train_dist = print_train_distribution(
+            labeled
+        )
+
+        report = build_report(
+            labeled,
+            args,
+            metadata,
+            signature,
+            out_root,
+            train_dist,
+        )
+    else:
+        # v2 (default): sequences FIRST, fail-closed, TRAIN+VALIDATION
+        # only. The safe boundary this establishes then bounds the OHLC
+        # read — order matters, and is deliberately reversed from v1.
+
+        # 1. Read model-ready TRAIN+VALIDATION sequence endpoints only.
+        #    Fails closed before any target/value column is read if the
+        #    upstream artifact is not actually TEST-free.
+        sequences = load_sequences_trainval_v2(
+            seq_root,
+            symbol,
+        )
+
+        max_trading_date = pd.to_datetime(
+            sequences["trading_date"]
+        ).max().date()
+
+        print(
+            "\nDerived TRAIN+VALIDATION boundary "
+            f"(max trading_date): {max_trading_date}"
+        )
+
+        # 2. Read causal Wilder ATR only up to that boundary — no
+        #    TEST-period OHLC bar is ever read into Python. ATR is
+        #    strictly backward-looking, so this produces identical values
+        #    for every retained row.
+        features = load_feature_ohlc_bounded(
+            feature_root,
+            symbol,
+            max_trading_date=max_trading_date,
+        )
+        features = compute_wilder_atr(
+            features,
+            args.atr_period,
+        )
+
+        # 3. Exact endpoint join — both inputs are already
+        #    TRAIN+VALIDATION-only.
+        joined = join_atr(
+            features,
+            sequences,
+            args.atr_period,
+        )
+
+        labeled = apply_policy(
+            joined,
+            args,
+            signature,
+        )
+
+        # 4. Validate — same generic checks as v1, plus an explicit
+        #    fail-closed TRAIN+VALIDATION-only assertion (defense in
+        #    depth, not reliant on the reader alone).
+        validate_table(
+            labeled,
+            expected_rows=len(sequences),
+            period=args.atr_period,
+        )
+        validate_trainval_only(
+            labeled
+        )
+
+        train_dist = print_train_distribution(
+            labeled
+        )
+
+        report = build_report(
+            labeled,
+            args,
+            metadata,
+            signature,
+            out_root,
+            train_dist,
+        )
+
+        # Artifact identity is kept separate from policy identity:
+        # policy_signature above is untouched by any of this.
+        contract_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "split_row_counts": report[
+                        "split_row_counts"
+                    ],
+                    "policy_signature": signature,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+        report["artifact_scope"] = "trainval"
+        report["artifact_contract_version"] = (
+            ARTIFACT_CONTRACT_VERSION
+        )
+        report["artifact_contract_hash"] = contract_hash
+        report["generated_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
 
     if not args.write:
         print("\nDRY-RUN PASS")
@@ -1177,6 +1747,25 @@ def main() -> None:
     report["manifest_file"] = str(
         out_root / "manifest.json"
     )
+
+    if not args.legacy_v1:
+        verification = verify_trainval_label_artifact(
+            out_root,
+            expected_policy_signature=signature,
+        )
+        report["required_trainval_verification"] = (
+            verification
+        )
+        print(
+            "\nv2 trainval verification: "
+            f"{'PASS' if verification['passed'] else 'FAIL'}"
+        )
+        print(f"  total_rows: {verification['total_rows']}")
+        print(f"  test_rows: {verification['test_rows']}")
+        print(
+            "  policy_signature_matches: "
+            f"{verification['policy_signature_matches']}"
+        )
 
     rpt_file.parent.mkdir(
         parents=True,
