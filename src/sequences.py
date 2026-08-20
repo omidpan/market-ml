@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as pa_dataset
 import yaml
 
 from common import load_config
@@ -55,6 +59,44 @@ FEATURE_COLUMNS = [
     "continuity_break_type",
     "contiguous_history_minutes",
 ]
+
+# Structural columns carry split identity, keys, and timestamps only — no
+# target/label VALUES. Safe to write for every split, including TEST, since
+# nothing here reveals a feature/target/label outcome.
+SEQUENCE_INDEX_STRUCTURAL_COLUMNS = [
+    "sample_index",
+    "symbol",
+    "source_id",
+    "sequence_length",
+    "target_horizon_minutes",
+    "stride_minutes",
+    "sequence_scope",
+    "window_start_datetime",
+    "window_end_datetime",
+    "prediction_time",
+    "target_realized_at",
+    "calendar_date",
+    "trading_date",
+    "session",
+    "split",
+    "contiguous_history_minutes",
+    "scope_history_minutes",
+]
+
+# Target VALUE columns. Must never be written for a TEST-split row in any
+# trainer-facing (trainval) artifact.
+SEQUENCE_INDEX_VALUE_COLUMNS = [
+    "target_return_bps",
+    "target_log_return",
+    "target_direction",
+    "target_same_session",
+    "target_same_trading_date",
+]
+
+SEQUENCE_INDEX_COLUMNS = (
+    SEQUENCE_INDEX_STRUCTURAL_COLUMNS
+    + SEQUENCE_INDEX_VALUE_COLUMNS
+)
 
 
 @dataclass(frozen=True)
@@ -687,6 +729,56 @@ def target_columns(horizon: int) -> list[str]:
     ]
 
 
+def target_structural_columns(horizon: int) -> list[str]:
+    """
+    v2 build-path contract: no future target OUTCOME value is read by this
+    column set. It exposes only the minimum eligibility/timing metadata
+    required to reproduce the existing sequence universe (window
+    eligibility, split assignment, and the boundary purge) — `target_valid`
+    and `target_realized_at` are retained because both are load-bearing for
+    that reproduction. `target_invalid_reason` is intentionally omitted
+    here: it is diagnostic-only and unused by `process_symbol_v2` (v1's
+    `target_columns`/`normalize_targets` path is unchanged and still
+    includes it). `target_same_session`/`target_same_trading_date` are
+    deliberately excluded here (see `target_outcome_columns`) even though
+    they are booleans, not prices — they are still derived from the
+    realized future bar, so they belong with the outcome columns, not this
+    eligibility set.
+    """
+    suffix = f"{int(horizon)}m"
+
+    return [
+        "datetime",
+        "prediction_time",
+        "trading_date",
+        "session",
+        "symbol",
+        "source_id",
+        f"target_valid_{suffix}",
+        f"target_realized_at_{suffix}",
+    ]
+
+
+def target_outcome_columns(horizon: int) -> list[str]:
+    """
+    Future-target-derived VALUE columns (matches SEQUENCE_INDEX_VALUE_COLUMNS).
+    `datetime`/`source_id` are included only as the join key back onto the
+    structural row set — they are already-known structural identifiers, not
+    outcomes themselves.
+    """
+    suffix = f"{int(horizon)}m"
+
+    return [
+        "datetime",
+        "source_id",
+        f"target_return_bps_{suffix}",
+        f"target_log_return_{suffix}",
+        f"target_direction_{suffix}",
+        f"target_same_session_{suffix}",
+        f"target_same_trading_date_{suffix}",
+    ]
+
+
 def normalize_features(
     frame: pd.DataFrame,
     *,
@@ -959,6 +1051,113 @@ def normalize_targets(
     )
 
 
+def normalize_target_structural(
+    frame: pd.DataFrame,
+    *,
+    symbol: str,
+    timezone: str,
+    horizon: int,
+) -> pd.DataFrame:
+    """
+    Structural-only counterpart to `normalize_targets`: validates and
+    normalizes eligibility/timing columns without ever touching a target
+    outcome VALUE column.
+    """
+    required = target_structural_columns(
+        horizon
+    )
+    missing = [
+        column
+        for column in required
+        if column not in frame.columns
+    ]
+    if missing:
+        raise ValueError(
+            f"Target partition missing structural columns: {missing}"
+        )
+
+    out = frame[required].copy()
+    suffix = f"{int(horizon)}m"
+
+    for column in (
+        "datetime",
+        "prediction_time",
+        f"target_realized_at_{suffix}",
+    ):
+        out[column] = ensure_timezone(
+            out[column],
+            timezone=timezone,
+            column=column,
+        )
+
+    out["trading_date"] = normalize_date(
+        out["trading_date"]
+    )
+
+    out[f"target_valid_{suffix}"] = parse_bool(
+        out[f"target_valid_{suffix}"],
+        f"target_valid_{suffix}",
+    )
+
+    out["symbol"] = (
+        out["symbol"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    out["source_id"] = (
+        out["source_id"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+    out["session"] = (
+        out["session"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    expected_symbol = normalize_symbol(symbol)
+    found = out["symbol"].dropna().unique()
+    if (
+        len(found) != 1
+        or found[0] != expected_symbol
+    ):
+        raise ValueError(
+            f"Expected target symbol={expected_symbol!r}; "
+            f"found={found.tolist()}"
+        )
+
+    if out.duplicated(
+        ["datetime", "source_id"]
+    ).any():
+        raise ValueError(
+            "Duplicate target (datetime, source_id) keys."
+        )
+
+    expected_realized = (
+        out["prediction_time"]
+        + timedelta(minutes=int(horizon))
+    )
+    if (
+        out[f"target_realized_at_{suffix}"]
+        != expected_realized
+    ).any():
+        raise ValueError(
+            f"Target timing violation for {suffix}: "
+            "target_realized_at must equal "
+            "prediction_time + horizon."
+        )
+
+    return (
+        out.sort_values(
+            ["source_id", "datetime"]
+        )
+        .reset_index(drop=True)
+    )
+
+
 def read_feature_partition(
     path: Path,
     *,
@@ -994,6 +1193,198 @@ def read_target_partition(
         symbol=symbol,
         timezone=timezone,
         horizon=horizon,
+    )
+
+
+def read_target_structural_partition(
+    path: Path,
+    *,
+    symbol: str,
+    timezone: str,
+    horizon: int,
+) -> pd.DataFrame:
+    """
+    Reads only eligibility/timing columns from a monthly target partition —
+    never a target outcome VALUE column. Safe for every row, every split,
+    every month, including TEST-period months, for the v2 build path.
+    """
+    columns = target_structural_columns(
+        horizon
+    )
+
+    return normalize_target_structural(
+        pd.read_parquet(
+            path,
+            engine="pyarrow",
+            columns=columns,
+        ),
+        symbol=symbol,
+        timezone=timezone,
+        horizon=horizon,
+    )
+
+
+def read_target_outcome_values(
+    path: Path,
+    *,
+    timezone: str,
+    horizon: int,
+    trainval_max_datetime: pd.Timestamp,
+    validation_last_trading_date,
+) -> pd.DataFrame:
+    """
+    Reads target outcome VALUE columns for this file's rows satisfying
+    BOTH:
+
+        trading_date <= validation_last_trading_date   (authoritative TEST exclusion)
+        datetime     <= trainval_max_datetime           (additionally excludes
+                                                          boundary-purged
+                                                          VALIDATION rows)
+
+    via a single Arrow-level predicate-pushdown filter
+    (`pyarrow.dataset` `filter=`). `trading_date` is the authoritative
+    split-boundary predicate — it alone is sufficient to exclude every
+    TEST-split row, since TEST is defined as `trading_date >
+    validation_last_trading_date` (`assign_split`). `trainval_max_datetime`
+    is supplied by the caller as the maximum `datetime` (window endpoint)
+    among the sequence endpoints already retained for TRAIN+VALIDATION
+    *after* both split assignment and the existing `target_realized_at`
+    boundary purge — computed from structural/timing metadata only, before
+    this function is ever called — and additionally excludes rows that,
+    while chronologically on a TRAIN/VALIDATION trading date, were purged
+    for crossing the split boundary within their own target horizon.
+
+    Both filter scalars are constructed from the dataset's own physical
+    schema field types (`dataset.schema.field(...).type`), never guessed,
+    to avoid any timezone/unit/type mismatch with the stored Parquet data.
+
+    Rows failing either predicate are excluded by the Arrow compute kernel
+    inside the scanner — the pandas DataFrame this function returns never
+    contains them, even transiently, even when the underlying Parquet file
+    mixes retained and excluded rows in a single row group. Internal
+    Arrow/Parquet decoding of excluded rows' column bytes may occur to
+    evaluate the filter; that decoding stays inside the Arrow C++ scanner
+    and is never returned to this or any other Python caller.
+
+    `trading_date` is read only to enforce and then fail-closed-verify the
+    filter; it is dropped before this function returns, since callers join
+    on `(source_id, datetime)` and do not need it.
+
+    Normalization below operates only on this already-filtered table — the
+    source file is never re-read. Finite-value validation against the
+    `target_valid` flag is intentionally left to the caller, to be applied
+    after this frame is joined onto the retained structural endpoint set
+    (see `process_symbol_v2`), since `target_valid` is not available here.
+    """
+    columns = target_outcome_columns(
+        horizon
+    )
+    suffix = f"{int(horizon)}m"
+
+    dataset = pa_dataset.dataset(
+        path,
+        format="parquet",
+        partitioning=None,
+    )
+
+    datetime_bound = pa.scalar(
+        trainval_max_datetime.to_pydatetime(),
+        type=dataset.schema.field(
+            "datetime"
+        ).type,
+    )
+    trading_date_bound = pa.scalar(
+        validation_last_trading_date,
+        type=dataset.schema.field(
+            "trading_date"
+        ).type,
+    )
+
+    table = dataset.to_table(
+        columns=columns + ["trading_date"],
+        filter=(
+            (
+                pc.field("trading_date")
+                <= trading_date_bound
+            )
+            & (
+                pc.field("datetime")
+                <= datetime_bound
+            )
+        ),
+    )
+
+    out = table.to_pandas()
+
+    # Fail-closed defense in depth: confirm the Arrow filter actually
+    # enforced BOTH predicates before this data is treated as safe to hold
+    # in a Python object at all.
+    if len(out) and (
+        out["datetime"].max()
+        > trainval_max_datetime
+    ):
+        raise AssertionError(
+            f"{path}: predicate-pushdown filter failed to exclude "
+            "rows beyond the TRAIN+VALIDATION datetime bound."
+        )
+    if len(out) and (
+        out["trading_date"].max()
+        > validation_last_trading_date
+    ):
+        raise AssertionError(
+            f"{path}: predicate-pushdown filter failed to exclude "
+            "rows beyond validation_last_trading_date — a TEST-split "
+            "row would otherwise have entered this frame."
+        )
+
+    out = out.drop(
+        columns=["trading_date"]
+    )
+
+    out["datetime"] = ensure_timezone(
+        out["datetime"],
+        timezone=timezone,
+        column="datetime",
+    )
+    out["source_id"] = (
+        out["source_id"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    for column in (
+        f"target_same_session_{suffix}",
+        f"target_same_trading_date_{suffix}",
+    ):
+        out[column] = parse_bool(
+            out[column],
+            column,
+        )
+
+    for column in (
+        f"target_return_bps_{suffix}",
+        f"target_log_return_{suffix}",
+        f"target_direction_{suffix}",
+    ):
+        out[column] = pd.to_numeric(
+            out[column],
+            errors="coerce",
+        )
+
+    if out.duplicated(
+        ["datetime", "source_id"]
+    ).any():
+        raise ValueError(
+            f"{path}: duplicate target-outcome "
+            "(datetime, source_id) keys."
+        )
+
+    return (
+        out.sort_values(
+            ["source_id", "datetime"]
+        )
+        .reset_index(drop=True)
     )
 
 
@@ -2012,33 +2403,8 @@ def process_symbol(
             output
         )
 
-        ordered_columns = [
-            "sample_index",
-            "symbol",
-            "source_id",
-            "sequence_length",
-            "target_horizon_minutes",
-            "stride_minutes",
-            "sequence_scope",
-            "window_start_datetime",
-            "window_end_datetime",
-            "prediction_time",
-            "target_realized_at",
-            "calendar_date",
-            "trading_date",
-            "session",
-            "split",
-            "contiguous_history_minutes",
-            "scope_history_minutes",
-            "target_return_bps",
-            "target_log_return",
-            "target_direction",
-            "target_same_session",
-            "target_same_trading_date",
-        ]
-
         output = output[
-            ordered_columns
+            SEQUENCE_INDEX_COLUMNS
         ]
 
         if output.duplicated(
@@ -2457,6 +2823,719 @@ def process_symbol(
     return summary
 
 
+def process_symbol_v2(
+    *,
+    features_root: Path,
+    targets_root: Path,
+    structural_output_root: Path,
+    trainval_output_root: Path,
+    symbol: str,
+    sequence_length: int,
+    target_horizon: int,
+    stride_minutes: int,
+    scope: str,
+    sessions: tuple[str, ...],
+    train_fraction: float,
+    validation_fraction: float,
+    config,
+    reports_root: Path | None,
+    configuration_sources: dict[str, str] | None = None,
+) -> dict:
+    """
+    Canonical Phase-3 v2 build path. Produces, directly from raw
+    features_root/targets_root — never from a pre-existing v1 artifact —
+    two additive outputs:
+
+      structural_output_root: every split, structural columns only
+        (SEQUENCE_INDEX_STRUCTURAL_COLUMNS) — no target outcome VALUE for
+        any row, including TRAIN/VALIDATION.
+
+      trainval_output_root: TRAIN+VALIDATION rows only, full columns
+        (SEQUENCE_INDEX_COLUMNS).
+
+    Two passes over the same monthly partitions:
+
+      Pass 1 (structural): for every month, reads only structural/timing
+      columns (never a target outcome VALUE), assigns splits via
+      `assign_split`, applies the existing `target_realized_at` boundary
+      purge, and writes the structural output. This pass alone determines
+      `trainval_max_datetime` — the maximum window endpoint among rows
+      actually retained for TRAIN+VALIDATION after split assignment AND the
+      purge — before any outcome value is read.
+
+      Pass 2 (trainval values): only for months that Pass 1 found to have
+      at least one retained TRAIN/VALIDATION row, reads target outcome
+      VALUE columns via `read_target_outcome_values`'s Arrow-level
+      predicate-pushdown filter (bounded by `trainval_max_datetime`), joins
+      them onto that month's retained structural rows, and writes the
+      trainval output. A month with zero retained rows (i.e. entirely
+      TEST-period) never has its outcome columns read at all.
+    """
+    symbol = normalize_symbol(
+        symbol
+    )
+    sequence_length = int(
+        sequence_length
+    )
+    target_horizon = int(
+        target_horizon
+    )
+    stride_minutes = int(
+        stride_minutes
+    )
+    scope = str(
+        scope
+    ).strip().lower()
+    sessions = tuple(
+        str(item).strip().lower()
+        for item in sessions
+    )
+
+    if scope == "same_session":
+        raise NotImplementedError(
+            "process_symbol_v2 does not support scope='same_session': "
+            "target_same_session is an outcome-VALUE column (derived from "
+            "the realized future bar) and cannot be read structurally for "
+            "every row without materializing TEST outcomes. The active "
+            "project configuration uses scope='continuous', which does "
+            "not need this column for eligibility."
+        )
+
+    if sequence_length < 1:
+        raise ValueError(
+            "sequence_length must be >= 1."
+        )
+    if (
+        sequence_length
+        > MAX_SUPPORTED_SEQUENCE_LENGTH
+    ):
+        raise ValueError(
+            f"sequence_length={sequence_length} exceeds "
+            f"the v2.1 feature continuity cap of "
+            f"{MAX_SUPPORTED_SEQUENCE_LENGTH}."
+        )
+    if target_horizon < 1:
+        raise ValueError(
+            "target_horizon must be >= 1."
+        )
+    if stride_minutes < 1:
+        raise ValueError(
+            "stride_minutes must be >= 1."
+        )
+    if scope not in VALID_SCOPES:
+        raise ValueError(
+            f"Unsupported scope={scope!r}."
+        )
+    if not sessions:
+        raise ValueError(
+            "At least one session is required."
+        )
+
+    feature_parts = discover_parts(
+        features_root,
+        symbol=symbol,
+    )
+    target_parts = discover_parts(
+        targets_root,
+        symbol=symbol,
+    )
+
+    feature_keys = sorted(
+        feature_parts
+    )
+    target_keys = sorted(
+        target_parts
+    )
+
+    if feature_keys != target_keys:
+        missing_targets = sorted(
+            set(feature_keys)
+            - set(target_keys)
+        )
+        extra_targets = sorted(
+            set(target_keys)
+            - set(feature_keys)
+        )
+
+        raise ValueError(
+            "Feature/target partition mismatch. "
+            f"missing_targets={missing_targets}, "
+            f"extra_targets={extra_targets}"
+        )
+
+    trading_date_cutoffs = (
+        collect_trading_date_cutoffs(
+            feature_parts,
+            symbol=symbol,
+            timezone=config.timezone,
+        )
+    )
+
+    split_plan = (
+        build_fraction_split_plan(
+            trading_date_cutoffs,
+            train_fraction=train_fraction,
+            validation_fraction=(
+                validation_fraction
+            ),
+        )
+    )
+
+    suffix = f"{target_horizon}m"
+    sessions_tag = "+".join(
+        sessions
+    )
+
+    shape_suffix = (
+        f"sequence_length={sequence_length}"
+        f"/horizon={suffix}"
+        f"/scope={scope}"
+        f"/stride={stride_minutes}"
+        f"/sessions={sessions_tag}"
+    )
+
+    structural_parameter_root = (
+        structural_output_root
+        / shape_suffix
+    )
+    trainval_parameter_root = (
+        trainval_output_root
+        / shape_suffix
+    )
+
+    structural_counts = {
+        "train": 0,
+        "validation": 0,
+        "test": 0,
+    }
+    trainval_counts = {
+        "train": 0,
+        "validation": 0,
+    }
+
+    sample_offset = 0
+    scope_state: dict[str, dict] = {}
+    retained_trainval_by_month: dict[
+        tuple[int, int], pd.DataFrame
+    ] = {}
+    trainval_max_datetime: pd.Timestamp | None = None
+    month_summaries = []
+
+    # --- Pass 1: structural, every month, no outcome VALUE ever read. ---
+    for key in feature_keys:
+        year, month = key
+
+        features = read_feature_partition(
+            feature_parts[key],
+            symbol=symbol,
+            timezone=config.timezone,
+        )
+        targets_structural = (
+            read_target_structural_partition(
+                target_parts[key],
+                symbol=symbol,
+                timezone=config.timezone,
+                horizon=target_horizon,
+            )
+        )
+
+        verify_aligned_month(
+            features,
+            targets_structural,
+            key=key,
+        )
+
+        current_usable = features[
+            "is_current_bar_usable"
+        ]
+
+        scope_history = compute_scope_history(
+            features,
+            allowed_sessions=sessions,
+            scope=scope,
+            state=scope_state,
+        )
+
+        window_eligible = (
+            current_usable
+            & (
+                features[
+                    "contiguous_history_minutes"
+                ]
+                >= sequence_length
+            )
+            & (
+                scope_history
+                >= sequence_length
+            )
+        )
+
+        stride_phase = (
+            (
+                scope_history
+                - sequence_length
+            )
+            % stride_minutes
+            == 0
+        )
+
+        structural_mask = (
+            window_eligible
+            & stride_phase
+        )
+
+        target_valid = targets_structural[
+            f"target_valid_{suffix}"
+        ]
+
+        # scope='same_session' is rejected above; continuous scope never
+        # needs target_same_session for eligibility.
+        target_scope_ok = pd.Series(
+            True,
+            index=targets_structural.index,
+            dtype=bool,
+        )
+
+        joint = (
+            structural_mask
+            & target_valid
+            & target_scope_ok
+        )
+
+        candidates = pd.DataFrame(
+            {
+                "datetime": (
+                    features.loc[
+                        joint, "datetime"
+                    ].reset_index(drop=True)
+                ),
+                "prediction_time": (
+                    features.loc[
+                        joint, "prediction_time"
+                    ].reset_index(drop=True)
+                ),
+                "calendar_date": (
+                    features.loc[
+                        joint, "calendar_date"
+                    ].reset_index(drop=True)
+                ),
+                "trading_date": (
+                    features.loc[
+                        joint, "trading_date"
+                    ].reset_index(drop=True)
+                ),
+                "session": (
+                    features.loc[
+                        joint, "session"
+                    ].reset_index(drop=True)
+                ),
+                "symbol": (
+                    features.loc[
+                        joint, "symbol"
+                    ].reset_index(drop=True)
+                ),
+                "source_id": (
+                    features.loc[
+                        joint, "source_id"
+                    ].reset_index(drop=True)
+                ),
+                "contiguous_history_minutes": (
+                    features.loc[
+                        joint,
+                        "contiguous_history_minutes",
+                    ].reset_index(drop=True)
+                ),
+                "scope_history_minutes": (
+                    scope_history.loc[
+                        joint
+                    ].reset_index(drop=True)
+                ),
+                "target_realized_at": (
+                    targets_structural.loc[
+                        joint,
+                        f"target_realized_at_{suffix}",
+                    ].reset_index(drop=True)
+                ),
+            }
+        )
+
+        candidates["sequence_length"] = sequence_length
+        candidates["target_horizon_minutes"] = target_horizon
+        candidates["stride_minutes"] = stride_minutes
+        candidates["sequence_scope"] = scope
+
+        candidates["window_end_datetime"] = candidates["datetime"]
+        candidates["window_start_datetime"] = (
+            candidates["window_end_datetime"]
+            - timedelta(
+                minutes=(sequence_length - 1)
+            )
+        )
+
+        candidates["split"] = assign_split(
+            candidates["trading_date"],
+            plan=split_plan,
+        )
+
+        boundary_ok = pd.Series(
+            True,
+            index=candidates.index,
+            dtype=bool,
+        )
+        train_mask = candidates["split"].eq("train")
+        validation_mask = candidates["split"].eq(
+            "validation"
+        )
+
+        boundary_ok.loc[train_mask] = (
+            candidates.loc[
+                train_mask, "target_realized_at"
+            ]
+            <= split_plan.train_cutoff_prediction_time
+        )
+        boundary_ok.loc[validation_mask] = (
+            candidates.loc[
+                validation_mask, "target_realized_at"
+            ]
+            <= split_plan.validation_cutoff_prediction_time
+        )
+
+        structural_month = (
+            candidates.loc[boundary_ok]
+            .copy()
+            .reset_index(drop=True)
+        )
+
+        structural_month["sample_index"] = np.arange(
+            sample_offset,
+            sample_offset + len(structural_month),
+            dtype="int64",
+        )
+        sample_offset += len(structural_month)
+
+        structural_month = structural_month[
+            SEQUENCE_INDEX_STRUCTURAL_COLUMNS
+        ]
+
+        if structural_month.duplicated(
+            ["symbol", "source_id", "window_end_datetime"]
+        ).any():
+            raise ValueError(
+                f"{key}: duplicate sequence endpoint keys."
+            )
+        if (
+            structural_month["prediction_time"]
+            <= structural_month["window_end_datetime"]
+        ).any():
+            raise AssertionError(
+                f"{key}: prediction_time must be "
+                "after the final input bar."
+            )
+        if (
+            structural_month["target_realized_at"]
+            <= structural_month["prediction_time"]
+        ).any():
+            raise AssertionError(
+                f"{key}: target must be realized "
+                "after prediction_time."
+            )
+
+        observed_structural_splits = set(
+            structural_month["split"].unique()
+        )
+        if not observed_structural_splits <= {
+            "train",
+            "validation",
+            "test",
+        }:
+            raise AssertionError(
+                f"{key}: structural output contains disallowed split "
+                "value(s) "
+                f"{observed_structural_splits - {'train', 'validation', 'test'}}."
+            )
+
+        structural_path = (
+            structural_parameter_root
+            / f"symbol={symbol}"
+            / f"year={year:04d}"
+            / f"month={month:02d}"
+            / "part.parquet"
+        )
+        atomic_write_parquet(
+            structural_month,
+            structural_path,
+            compression=config.parquet_compression,
+        )
+
+        for split_name, count in (
+            structural_month["split"]
+            .value_counts()
+            .to_dict()
+            .items()
+        ):
+            structural_counts[split_name] = (
+                structural_counts.get(split_name, 0)
+                + int(count)
+            )
+
+        retained = structural_month.loc[
+            structural_month["split"] != "test"
+        ].copy()
+
+        if len(retained):
+            retained_trainval_by_month[key] = retained
+            month_max = retained[
+                "window_end_datetime"
+            ].max()
+            if (
+                trainval_max_datetime is None
+                or month_max > trainval_max_datetime
+            ):
+                trainval_max_datetime = month_max
+
+        month_summaries.append(
+            {
+                "year": year,
+                "month": month,
+                "structural_rows_written": int(
+                    len(structural_month)
+                ),
+                "trainval_rows_retained": int(
+                    len(retained)
+                ),
+            }
+        )
+
+    if trainval_max_datetime is None:
+        raise ValueError(
+            "No TRAIN/VALIDATION rows survived split assignment "
+            "and the boundary purge — cannot derive "
+            "trainval_max_datetime."
+        )
+
+    # --- Pass 2: trainval outcome values, only for months with retained rows. ---
+    for key, retained in sorted(
+        retained_trainval_by_month.items()
+    ):
+        year, month = key
+
+        outcome = read_target_outcome_values(
+            target_parts[key],
+            timezone=config.timezone,
+            horizon=target_horizon,
+            trainval_max_datetime=trainval_max_datetime,
+            validation_last_trading_date=(
+                split_plan.validation_last_trading_date
+            ),
+        )
+
+        suffix_cols = {
+            f"target_return_bps_{suffix}": "target_return_bps",
+            f"target_log_return_{suffix}": "target_log_return",
+            f"target_direction_{suffix}": "target_direction",
+            f"target_same_session_{suffix}": "target_same_session",
+            f"target_same_trading_date_{suffix}": (
+                "target_same_trading_date"
+            ),
+        }
+        outcome = outcome.rename(columns=suffix_cols)
+
+        merged = retained.merge(
+            outcome,
+            how="left",
+            left_on=["source_id", "window_end_datetime"],
+            right_on=["source_id", "datetime"],
+            validate="one_to_one",
+        )
+
+        missing = merged[
+            "target_return_bps"
+        ].isna()
+        if missing.any():
+            raise ValueError(
+                f"{key}: {int(missing.sum())} retained TRAIN/VALIDATION "
+                "row(s) had no matching target-outcome row within "
+                "trainval_max_datetime."
+            )
+
+        finite_required = [
+            "target_return_bps",
+            "target_log_return",
+            "target_direction",
+        ]
+        finite_values = merged[
+            finite_required
+        ].to_numpy(dtype="float64", na_value=np.nan)
+        if not np.isfinite(finite_values).all():
+            raise ValueError(
+                f"{key}: non-finite target outcome values in retained "
+                "TRAIN/VALIDATION rows."
+            )
+
+        merged = merged[
+            SEQUENCE_INDEX_COLUMNS
+        ]
+
+        # Fail-closed, explicit — do not rely on `split != "test"` filtering
+        # upstream as an implicit guarantee.
+        observed_splits = set(
+            merged["split"].unique()
+        )
+        if not observed_splits <= {
+            "train",
+            "validation",
+        }:
+            raise AssertionError(
+                f"{key}: trainval output contains disallowed split "
+                f"value(s) {observed_splits - {'train', 'validation'}}."
+            )
+        if (
+            merged["split"] == "test"
+        ).any():
+            raise AssertionError(
+                f"{key}: trainval output contains "
+                "split == 'test' rows immediately before write."
+            )
+
+        trainval_path = (
+            trainval_parameter_root
+            / f"symbol={symbol}"
+            / f"year={year:04d}"
+            / f"month={month:02d}"
+            / "part.parquet"
+        )
+        atomic_write_parquet(
+            merged,
+            trainval_path,
+            compression=config.parquet_compression,
+        )
+
+        for split_name, count in (
+            merged["split"]
+            .value_counts()
+            .to_dict()
+            .items()
+        ):
+            trainval_counts[split_name] = (
+                trainval_counts.get(split_name, 0)
+                + int(count)
+            )
+
+    contract_hash = hashlib.sha256(
+        json.dumps(
+            {
+                "structural_row_counts": structural_counts,
+                "trainval_row_counts": trainval_counts,
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    generated_at = datetime.now(
+        timezone.utc
+    ).isoformat()
+
+    common_manifest_fields = {
+        "artifact_contract_version": "v2",
+        "sequence_version": SEQUENCE_VERSION,
+        "symbol": symbol,
+        "features_root": str(features_root),
+        "targets_root": str(targets_root),
+        "sequence_length": sequence_length,
+        "target_horizon_minutes": target_horizon,
+        "stride_minutes": stride_minutes,
+        "scope": scope,
+        "sessions": list(sessions),
+        "train_fraction": split_plan.train_fraction,
+        "validation_fraction": split_plan.validation_fraction,
+        "test_fraction": split_plan.test_fraction,
+        "train_last_trading_date": str(
+            split_plan.train_last_trading_date
+        ),
+        "validation_last_trading_date": str(
+            split_plan.validation_last_trading_date
+        ),
+        "train_cutoff_prediction_time": str(
+            split_plan.train_cutoff_prediction_time
+        ),
+        "validation_cutoff_prediction_time": str(
+            split_plan.validation_cutoff_prediction_time
+        ),
+        "trainval_max_datetime": str(
+            trainval_max_datetime
+        ),
+        "structural_row_counts": structural_counts,
+        "trainval_row_counts": trainval_counts,
+        "configuration_sources": (
+            configuration_sources or {}
+        ),
+        "generated_at": generated_at,
+        "artifact_contract_hash": contract_hash,
+    }
+
+    structural_manifest = {
+        "artifact_scope": "structural_all_splits",
+        **common_manifest_fields,
+    }
+    trainval_manifest = {
+        "artifact_scope": "trainval",
+        **common_manifest_fields,
+    }
+
+    atomic_write_json(
+        structural_manifest,
+        structural_parameter_root
+        / f"symbol={symbol}"
+        / "manifest.json",
+    )
+    atomic_write_json(
+        trainval_manifest,
+        trainval_parameter_root
+        / f"symbol={symbol}"
+        / "manifest.json",
+    )
+
+    summary = {
+        "sequence_version": SEQUENCE_VERSION,
+        "artifact_contract_version": "v2",
+        "artifact_contract_hash": contract_hash,
+        "symbol": symbol,
+        "structural_row_counts": structural_counts,
+        "trainval_row_counts": trainval_counts,
+        "trainval_max_datetime": str(
+            trainval_max_datetime
+        ),
+        "month_summaries": month_summaries,
+        "structural_output_root": str(
+            structural_parameter_root
+        ),
+        "trainval_output_root": str(
+            trainval_parameter_root
+        ),
+    }
+
+    if reports_root is not None:
+        report = (
+            reports_root
+            / symbol
+            / (
+                "sequence_summary_v2_"
+                f"L{sequence_length}_"
+                f"H{target_horizon}m_"
+                f"{scope}_"
+                f"S{stride_minutes}_"
+                f"{sessions_tag}.json"
+            )
+        )
+        atomic_write_json(
+            summary,
+            report,
+        )
+        summary["report_file"] = str(report)
+
+    return summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -2481,6 +3560,41 @@ def parse_args() -> argparse.Namespace:
         "--output-root",
         type=Path,
         default=None,
+        help=(
+            "v1 legacy output root. Requires --legacy-v1. Writes the "
+            "full-value, all-splits sequence-index artifact — do not use "
+            "for a trainer-facing build."
+        ),
+    )
+    parser.add_argument(
+        "--structural-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "v2 (default/canonical) structural output root: every split, "
+            "structural columns only, no target outcome VALUE for any row."
+        ),
+    )
+    parser.add_argument(
+        "--trainval-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "v2 (default/canonical) TRAIN+VALIDATION-only value output "
+            "root."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help=(
+            "Explicit opt-in to run the frozen v1 build path "
+            "(process_symbol), which writes full target-outcome VALUES "
+            "for every split, including TEST, into a single artifact. "
+            "Requires --output-root. Without this flag, the v2 build path "
+            "(process_symbol_v2) runs by default and requires "
+            "--structural-output-root/--trainval-output-root instead."
+        ),
     )
     parser.add_argument(
         "--symbol",
@@ -2621,10 +3735,6 @@ def main() -> int:
         args.targets_root,
         "--targets-root",
     )
-    output_root = _require_runtime_arg(
-        args.output_root,
-        "--output-root",
-    )
     symbol = _require_runtime_arg(
         args.symbol,
         "--symbol",
@@ -2645,36 +3755,95 @@ def main() -> int:
         )
     )
 
-    summary = process_symbol(
-        features_root=features_root,
-        targets_root=targets_root,
-        output_root=output_root,
-        symbol=symbol,
-        sequence_length=(
-            settings.sequence_length
-        ),
-        target_horizon=(
-            settings.target_horizon
-        ),
-        stride_minutes=(
-            settings.stride_minutes
-        ),
-        scope=settings.scope,
-        sessions=settings.sessions,
-        train_fraction=(
-            settings.train_fraction
-        ),
-        validation_fraction=(
-            settings.validation_fraction
-        ),
-        config=config,
-        reports_root=(
-            args.reports
-        ),
-        configuration_sources=(
-            setting_sources
-        ),
-    )
+    if args.legacy_v1:
+        output_root = _require_runtime_arg(
+            args.output_root,
+            "--output-root",
+        )
+        print(
+            "--legacy-v1 explicitly requested: running the frozen v1 "
+            "build path. This writes target-outcome VALUES for every "
+            "split, including TEST. Do not point a trainer at this "
+            "output."
+        )
+        summary = process_symbol(
+            features_root=features_root,
+            targets_root=targets_root,
+            output_root=output_root,
+            symbol=symbol,
+            sequence_length=(
+                settings.sequence_length
+            ),
+            target_horizon=(
+                settings.target_horizon
+            ),
+            stride_minutes=(
+                settings.stride_minutes
+            ),
+            scope=settings.scope,
+            sessions=settings.sessions,
+            train_fraction=(
+                settings.train_fraction
+            ),
+            validation_fraction=(
+                settings.validation_fraction
+            ),
+            config=config,
+            reports_root=(
+                args.reports
+            ),
+            configuration_sources=(
+                setting_sources
+            ),
+        )
+    else:
+        structural_output_root = (
+            _require_runtime_arg(
+                args.structural_output_root,
+                "--structural-output-root",
+            )
+        )
+        trainval_output_root = (
+            _require_runtime_arg(
+                args.trainval_output_root,
+                "--trainval-output-root",
+            )
+        )
+        summary = process_symbol_v2(
+            features_root=features_root,
+            targets_root=targets_root,
+            structural_output_root=(
+                structural_output_root
+            ),
+            trainval_output_root=(
+                trainval_output_root
+            ),
+            symbol=symbol,
+            sequence_length=(
+                settings.sequence_length
+            ),
+            target_horizon=(
+                settings.target_horizon
+            ),
+            stride_minutes=(
+                settings.stride_minutes
+            ),
+            scope=settings.scope,
+            sessions=settings.sessions,
+            train_fraction=(
+                settings.train_fraction
+            ),
+            validation_fraction=(
+                settings.validation_fraction
+            ),
+            config=config,
+            reports_root=(
+                args.reports
+            ),
+            configuration_sources=(
+                setting_sources
+            ),
+        )
 
     print(
         json.dumps(
