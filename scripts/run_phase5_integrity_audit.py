@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Milestone 1 Skill 05 — Phase-4 configuration-integrity and dependency audit.
+Milestone 1 Skill 05 — Phase-4/5 configuration, dependency, and sealed-v2
+integrity audit.
 
 Read-only with respect to Parquet/model artifacts. Does not train, does not
 run Concourse, does not inspect TEST values.
@@ -8,6 +9,9 @@ run Concourse, does not inspect TEST values.
     python scripts/run_phase5_integrity_audit.py --mode config
     python scripts/run_phase5_integrity_audit.py --mode dependencies
     python scripts/run_phase5_integrity_audit.py --mode concourse
+    python scripts/run_phase5_integrity_audit.py --mode v2wiring
+    python scripts/run_phase5_integrity_audit.py --mode v2data
+    python scripts/run_phase5_integrity_audit.py --mode v1provenance
     python scripts/run_phase5_integrity_audit.py --mode all
 
 Config paths default to the normal local layout (config/pipeline.yaml,
@@ -18,6 +22,34 @@ Concourse-persisted copies at a different mounted path (see
 ci/concourse/phase05.yml, which passes the Phase-4 generated-config
 resource's actual mount point explicitly rather than assuming the local
 config/generated layout exists in the container).
+
+Gates D (v2wiring), E (v1provenance), and F (v2data) verify the sealed
+TEST-excluded v2 CONTROL-vs-ACD artifact contract introduced in
+scripts/run_phase3_control_vs_acd.py / scripts/run_phase4_control_vs_acd.py
+after the v1 data-leakage fix.
+
+  - Gate D (v2wiring) is a static, code-level check: it imports the two
+    phase scripts and confirms the active (no --legacy-v1) default path
+    resolves exclusively to the v2 namespaces, with the frozen counts and
+    policy_signature matching the approved values. It reads zero Parquet
+    data.
+  - Gate E (v1provenance) confirms the frozen v1 artifact roots are still
+    present via Path.exists() only — it never opens a file, reads a column,
+    or touches a v1 row (TEST or otherwise).
+  - Gate F (v2data) is the actual sealed-v2 data-level contract —
+    TEST-sealing, frozen row counts, CONTROL/ACD key equality, label
+    equality, and policy_signature — verified against real Parquet
+    artifacts by calling scripts/run_phase3_control_vs_acd.py's and
+    scripts/run_phase4_control_vs_acd.py's own frozen run_validation_v2()
+    functions. Those functions are imported and reused, never
+    reimplemented, so Phase 5 cannot silently diverge from the
+    leakage-sensitive logic that Phase 3/4 already froze. Gate F reports
+    status="blocked" (never a silent pass) if the sealed artifact roots do
+    not exist yet.
+
+Overall status precedence is ERROR > BLOCKED > FAIL/PASS: an audit-code
+error always outranks a blocked gate, and a blocked gate always outranks a
+plain pass/fail, so neither condition can be masked as an overall PASS.
 """
 
 from __future__ import annotations
@@ -127,6 +159,7 @@ def run_config_audit(canonical_path: Path, control_path: Path, acd_path: Path) -
 
     return {
         "gate": "config",
+        "status": "pass" if passed else "fail",
         "passed": passed,
         "checks": checks,
         "canonical_to_control_diff": canonical_to_control,
@@ -315,6 +348,7 @@ def run_dependency_audit(
 
     return {
         "gate": "dependencies",
+        "status": "pass" if passed else "fail",
         "passed": passed,
         "checks": checks,
         "missing_entry_files": missing_entry_files,
@@ -558,10 +592,300 @@ def run_concourse_audit(pipeline_path: Path) -> dict:
 
     return {
         "gate": "concourse",
+        "status": "pass" if all_ok else "fail",
         "passed": all_ok,
         "findings": findings,
         "pipeline_wiring": pipeline_wiring,
     }
+
+
+# ---------------------------------------------------------------------------
+# Gate D — v2 wiring (static, code-level; reads zero Parquet data)
+# ---------------------------------------------------------------------------
+
+V2_EXPECTED_RELATIVE_PATHS = {
+    "sequence_index_structural": "data/parquet/sequence_index_phase3_common_v2",
+    "sequence_index_trainval": "data/parquet/sequence_index_phase3_trainval_v2",
+    "model_matrix_trainval": "data/parquet/model_matrix_phase3_trainval_v2",
+    "label_policy_trainval": "data/parquet/label_policy_phase4_trainval_v2",
+}
+
+EXPECTED_FROZEN_POLICY_SIGNATURE = (
+    "cf167954f3b200118fb80fd50e680b4522cc3347cf08754a594f213945df6d9f"
+)
+EXPECTED_FROZEN_TRAIN_COUNT = 878_828
+EXPECTED_FROZEN_VALIDATION_COUNT = 189_428
+EXPECTED_CONTROL_FEATURE_COUNT_V2 = 23
+EXPECTED_ACD_FEATURE_COUNT_V2 = 150
+
+
+def _import_phase_modules():
+    """Imports scripts/run_phase3_control_vs_acd.py and
+    scripts/run_phase4_control_vs_acd.py as modules so Gates D/F can reuse
+    their own frozen constants and run_validation_v2() functions instead of
+    duplicating leakage-sensitive logic. Mirrors the sys.path setup those
+    scripts already do for each other (run_phase4 imports run_phase3)."""
+
+    import importlib
+
+    for p in (str(REPO_ROOT / "scripts"), str(REPO_ROOT / "src")):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    phase3 = importlib.import_module("run_phase3_control_vs_acd")
+    phase4 = importlib.import_module("run_phase4_control_vs_acd")
+    return phase3, phase4
+
+
+def _legacy_v1_is_opt_in_flag(script_path: Path) -> bool:
+    """True iff --legacy-v1 is declared as a plain store_true flag (default
+    False) with no explicit default=True override nearby — i.e. the active/
+    default CLI path can never silently resolve to v1 output roots."""
+
+    text = script_path.read_text(encoding="utf-8")
+    match = re.search(r'"--legacy-v1",\s*\n\s*action="store_true"', text)
+    if match is None:
+        return False
+    window = text[match.start(): match.start() + 400]
+    return "default=True" not in window
+
+
+def run_v2_wiring_audit() -> dict:
+    """Gate D — static, code-level check that the active (no --legacy-v1)
+    path in scripts/run_phase3_control_vs_acd.py and
+    scripts/run_phase4_control_vs_acd.py is wired exclusively to the sealed
+    v2 namespaces, with the frozen counts/signature matching the approved
+    values. Reads zero Parquet data."""
+
+    phase3, phase4 = _import_phase_modules()
+
+    def rel(path: Path) -> str:
+        return str(path.relative_to(REPO_ROOT))
+
+    checks = {
+        "sequence_index_structural_v2_path": (
+            rel(phase3.DEFAULT_SEQUENCE_INDEX_STRUCTURAL_ROOT_V2)
+            == V2_EXPECTED_RELATIVE_PATHS["sequence_index_structural"]
+        ),
+        "sequence_index_trainval_v2_path": (
+            rel(phase3.DEFAULT_SEQUENCE_INDEX_TRAINVAL_ROOT_V2)
+            == V2_EXPECTED_RELATIVE_PATHS["sequence_index_trainval"]
+        ),
+        "model_matrix_trainval_v2_path": (
+            rel(phase3.DEFAULT_MODEL_MATRIX_ROOT_V2)
+            == V2_EXPECTED_RELATIVE_PATHS["model_matrix_trainval"]
+        ),
+        "label_policy_trainval_v2_path": (
+            rel(phase4.DEFAULT_LABEL_POLICY_ROOT_V2)
+            == V2_EXPECTED_RELATIVE_PATHS["label_policy_trainval"]
+        ),
+        "phase3_legacy_v1_is_opt_in_flag": _legacy_v1_is_opt_in_flag(
+            REPO_ROOT / "scripts" / "run_phase3_control_vs_acd.py"
+        ),
+        "phase4_legacy_v1_is_opt_in_flag": _legacy_v1_is_opt_in_flag(
+            REPO_ROOT / "scripts" / "run_phase4_control_vs_acd.py"
+        ),
+        "frozen_train_count_matches_878828": phase3.FROZEN_TRAIN_COUNT == EXPECTED_FROZEN_TRAIN_COUNT,
+        "frozen_validation_count_matches_189428": (
+            phase3.FROZEN_VALIDATION_COUNT == EXPECTED_FROZEN_VALIDATION_COUNT
+        ),
+        "frozen_policy_signature_matches": (
+            phase4.FROZEN_POLICY_SIGNATURE == EXPECTED_FROZEN_POLICY_SIGNATURE
+        ),
+    }
+
+    if str(REPO_ROOT / "src") not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT / "src"))
+    from model_matrix import DEFAULT_FEATURES  # noqa: E402  (v1/v2-shared CONTROL feature list)
+
+    control_feature_count = len(DEFAULT_FEATURES)
+    checks["control_feature_count_is_23"] = (
+        control_feature_count == EXPECTED_CONTROL_FEATURE_COUNT_V2
+    )
+
+    manifest_path = (
+        phase3.DEFAULT_FEATURES_1M_ACD_V1_ENCODED / "categorical_encoding_manifest.json"
+    )
+    acd_feature_count = None
+    if manifest_path.exists():
+        manifest = phase3._load_manifest(phase3.DEFAULT_FEATURES_1M_ACD_V1_ENCODED)
+        acd_feature_count = len(phase3.derive_acd_features(manifest))
+        checks["acd_feature_count_is_150"] = acd_feature_count == EXPECTED_ACD_FEATURE_COUNT_V2
+    else:
+        checks["acd_feature_count_is_150"] = False
+
+    passed = all(checks.values())
+
+    return {
+        "gate": "v2_wiring",
+        "status": "pass" if passed else "fail",
+        "passed": passed,
+        "checks": checks,
+        "control_feature_count": control_feature_count,
+        "acd_feature_count": acd_feature_count,
+        "acd_encoding_manifest_path": str(manifest_path),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Gate E — v1 provenance untouched (Path.exists() only; zero value reads)
+# ---------------------------------------------------------------------------
+
+V1_PROVENANCE_RELATIVE_ROOTS = [
+    "data/parquet/sequence_index_phase3_common_v1",
+    "data/parquet/model_matrix_phase3_common_v1",
+    "data/parquet/label_policy_phase4_common_v1",
+]
+
+
+def run_v1_provenance_audit() -> dict:
+    """Gate E — confirms the frozen v1 artifact roots are still present.
+    Path.exists() only: never opens a file, never reads a column, never
+    touches a v1 row (TEST or otherwise)."""
+
+    existence = {
+        rel_path: (REPO_ROOT / rel_path).exists()
+        for rel_path in V1_PROVENANCE_RELATIVE_ROOTS
+    }
+    passed = all(existence.values())
+    return {
+        "gate": "v1_provenance_untouched",
+        "status": "pass" if passed else "fail",
+        "passed": passed,
+        "checks": existence,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Gate F — v2 sealed-artifact data integrity (empirical; reuses frozen
+# run_validation_v2() from the Phase 3/4 scripts)
+# ---------------------------------------------------------------------------
+
+def run_v2_data_integrity_audit() -> dict:
+    """Gate F — the actual sealed-v2 data-level contract: TEST-sealing,
+    frozen row counts, CONTROL/ACD key equality, label equality, and
+    policy_signature, verified against real Parquet artifacts by calling
+    scripts/run_phase3_control_vs_acd.py's and
+    scripts/run_phase4_control_vs_acd.py's own frozen run_validation_v2()
+    functions — never reimplemented here. Reports status="blocked" (never a
+    silent pass) if the sealed artifact roots do not exist yet; status=
+    "error" if the frozen validation functions themselves raise."""
+
+    phase3, phase4 = _import_phase_modules()
+
+    artifact_paths = {
+        "sequence_index_structural_v2": phase3.DEFAULT_SEQUENCE_INDEX_STRUCTURAL_ROOT_V2,
+        "sequence_index_trainval_v2": phase3.DEFAULT_SEQUENCE_INDEX_TRAINVAL_ROOT_V2,
+        "model_matrix_trainval_v2": phase3.DEFAULT_MODEL_MATRIX_ROOT_V2,
+        "label_policy_trainval_v2": phase4.DEFAULT_LABEL_POLICY_ROOT_V2,
+    }
+    generated_config_paths = {
+        "generated_config_control_v2": REPO_ROOT / "config/generated/pipeline_phase4_control_v2.yaml",
+        "generated_config_acd_v2": REPO_ROOT / "config/generated/pipeline_phase4_acd_v2.yaml",
+    }
+    all_paths = {**artifact_paths, **generated_config_paths}
+    existence = {name: path.exists() for name, path in all_paths.items()}
+
+    result = {
+        "gate": "v2_data_integrity",
+        "artifact_paths": {name: str(p) for name, p in all_paths.items()},
+        "artifact_existence": existence,
+    }
+
+    if not all(existence[name] for name in artifact_paths):
+        result["status"] = "blocked"
+        result["passed"] = False
+        result["blocked_reason"] = (
+            "One or more sealed v2 artifact roots do not exist on disk. "
+            "Phase 3/4 v2 has not been executed in this environment — only "
+            "the v2 code path has been committed (scripts/"
+            "run_phase3_control_vs_acd.py, scripts/run_phase4_control_vs_acd.py, "
+            "commit 5498d7c). Data-level TEST-sealing, row-count, "
+            "key-equality, and policy_signature checks cannot run against "
+            "artifacts that do not exist."
+        )
+        return result
+
+    control_root = phase3.control_matrix_root(artifact_paths["model_matrix_trainval_v2"])
+    acd_root = phase3.acd_matrix_root(artifact_paths["model_matrix_trainval_v2"])
+
+    try:
+        phase3_passed = phase3.run_validation_v2(
+            control_root, acd_root, phase3.DEFAULT_FEATURES_1M_ACD_V1_ENCODED,
+            artifact_paths["sequence_index_structural_v2"],
+        )
+    except Exception as exc:  # noqa: BLE001 — surfaced verbatim in the report
+        result["status"] = "error"
+        result["passed"] = False
+        result["error"] = f"phase3.run_validation_v2 raised: {exc!r}"
+        return result
+
+    try:
+        phase4_passed = phase4.run_validation_v2(
+            artifact_paths["model_matrix_trainval_v2"],
+            artifact_paths["label_policy_trainval_v2"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        result["status"] = "error"
+        result["passed"] = False
+        result["error"] = f"phase4.run_validation_v2 raised: {exc!r}"
+        return result
+
+    passed = bool(phase3_passed and phase4_passed)
+    result["status"] = "pass" if passed else "fail"
+    result["passed"] = passed
+    result["phase3_validation_v2_passed"] = phase3_passed
+    result["phase4_validation_v2_passed"] = phase4_passed
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Informational only — NOT a Phase 5 gate, never affects overall_status
+# ---------------------------------------------------------------------------
+
+def check_run_compare_v2_known_issue() -> dict:
+    """The known run_compare() v2 run-ID issue: informational only. Per
+    explicit user instruction it is deferred until before Phase 6 and is not
+    a Phase 5 blocker, so it is reported separately from `gates` and is never
+    consulted by the overall_status rollup."""
+
+    text = (REPO_ROOT / "scripts" / "run_phase4_control_vs_acd.py").read_text(encoding="utf-8")
+    match = re.search(r"def run_compare\(.*?\n(?=def |\Z)", text, re.S)
+    body = match.group(0) if match else ""
+    uses_v1_ids_only = "CONTROL_RUN_ID_V2" not in body and "CONTROL_RUN_ID" in body
+
+    return {
+        "known_issue": "run_compare_v2_run_id",
+        "confirmed_present": uses_v1_ids_only,
+        "phase5_blocker": False,
+        "detail": (
+            "run_compare() resolves training_report.json paths via the v1 "
+            "CONTROL_RUN_ID/ACD_RUN_ID constants, not CONTROL_RUN_ID_V2/"
+            "ACD_RUN_ID_V2, even though the v2 path is active by default. "
+            "Deferred until before Phase 6 per explicit user instruction — "
+            "not evaluated as a Phase 5 gate."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Overall-status rollup (shared by main() and tests — never duplicated)
+# ---------------------------------------------------------------------------
+
+def _rollup_gate_status(gates: list) -> str:
+    """Overall status precedence: ERROR > BLOCKED > FAIL > PASS. An
+    audit-code error always outranks a blocked gate, a blocked gate always
+    outranks a plain fail, and a plain fail always outranks a pass — so
+    neither an error nor a blocked gate can ever be masked as an overall
+    PASS. known_issues never participate in this rollup."""
+
+    gate_statuses = [g.get("status", "pass" if g["passed"] else "fail") for g in gates]
+    if any(s == "error" for s in gate_statuses):
+        return "error"
+    if any(s == "blocked" for s in gate_statuses):
+        return "blocked"
+    if all(g["passed"] for g in gates):
+        return "pass"
+    return "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +894,15 @@ def run_concourse_audit(pipeline_path: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=["config", "dependencies", "concourse", "all"], default="all")
+    parser.add_argument(
+        "--mode",
+        choices=[
+            "config", "dependencies", "concourse",
+            "v2wiring", "v2data", "v1provenance",
+            "all",
+        ],
+        default="all",
+    )
     parser.add_argument("--canonical-config", type=Path, default=DEFAULT_CANONICAL_CONFIG)
     parser.add_argument("--control-config", type=Path, default=DEFAULT_CONTROL_CONFIG)
     parser.add_argument("--acd-config", type=Path, default=DEFAULT_ACD_CONFIG)
@@ -614,19 +946,57 @@ def main() -> int:
             status = "PASS" if finding["ok"] else "FAIL"
             print(f"  [{status}] {finding['file']}" + (f" — {finding['detail']}" if finding["detail"] else ""))
 
+    if args.mode in ("v2wiring", "all"):
+        result = run_v2_wiring_audit()
+        gates.append(result)
+        print(f"\n[Gate D: v2wiring] {result['status'].upper()}")
+        for name, ok in result["checks"].items():
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+        print(f"  control_feature_count={result['control_feature_count']} "
+              f"acd_feature_count={result['acd_feature_count']}")
+
+    if args.mode in ("v1provenance", "all"):
+        result = run_v1_provenance_audit()
+        gates.append(result)
+        print(f"\n[Gate E: v1provenance] {result['status'].upper()}")
+        for name, ok in result["checks"].items():
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
+
+    if args.mode in ("v2data", "all"):
+        result = run_v2_data_integrity_audit()
+        gates.append(result)
+        print(f"\n[Gate F: v2data] {result['status'].upper()}")
+        if result["status"] == "blocked":
+            print(f"  BLOCKED: {result['blocked_reason']}")
+            for name, exists in result["artifact_existence"].items():
+                print(f"  [{'PRESENT' if exists else 'MISSING'}] {name}")
+        elif result["status"] == "error":
+            print(f"  ERROR: {result['error']}")
+        else:
+            print(f"  phase3.run_validation_v2: {'PASS' if result['phase3_validation_v2_passed'] else 'FAIL'}")
+            print(f"  phase4.run_validation_v2: {'PASS' if result['phase4_validation_v2_passed'] else 'FAIL'}")
+
+    known_issues = []
+    if args.mode == "all":
+        known_issues.append(check_run_compare_v2_known_issue())
+
     report["gates"] = gates
-    passed = all(g["passed"] for g in gates)
-    report["overall_passed"] = passed
+    report["known_issues"] = known_issues
+
+    overall_status = _rollup_gate_status(gates)
+    overall_passed = overall_status == "pass"
+    report["overall_status"] = overall_status
+    report["overall_passed"] = overall_passed  # kept for backward-compat with existing consumers
 
     args.report_root.mkdir(parents=True, exist_ok=True)
     report_path = args.report_root / "phase5_integrity_report.json"
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
 
-    print(f"\nOverall: {'PASS' if passed else 'FAIL'}")
+    print(f"\nOverall: {overall_status.upper()}")
     print(f"Report: {report_path}")
 
-    return 0 if passed else 1
+    return 0 if overall_passed else 1
 
 
 if __name__ == "__main__":
