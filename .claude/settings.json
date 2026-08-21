@@ -1,11 +1,13 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(python3 \"/private/tmp/claude-501/-Users-leo-Library-CloudStorage-GoogleDrive-omidpnteaching-gmail-com-My-Drive-market-ml/4aac59e0-88fc-45e2-84d9-7c7b119cc3bf/scratchpad/check_sequences.py\")",
+      "Bash(rm -rf __TRACKED_VAR__/label_policy_trainval_v2 __TRACKED_VAR__/reports_label_policy_v2)",
+      "Bash(/Users/leo/miniconda3/envs/data-engineer/bin/python src/build_label_policy.py --project-root . --symbol nvda --model-matrix-root __TRACKED_VAR__/model_matrix_trainval_v2_readercheck --label-policy-root __TRACKED_VAR__/label_policy_trainval_v2 --reports-root __TRACKED_VAR__/reports_label_policy_v2 --horizon 15 --sequence-length 120 --feature-set core_v1 --scope continuous --stride 1 --sessions premarket,regular,aftermarket --atr-period 14 --multiplier 0.75 --policy-name atr_relative_3class_v1 --write)"
+    ],
     "deny": [
       "Edit(./data/raw/**)",
       "Bash(git push*)"
-    ],
-    "allow": [
-      "Bash(python3 \"/private/tmp/claude-501/-Users-leo-Library-CloudStorage-GoogleDrive-omidpnteaching-gmail-com-My-Drive-market-ml/4aac59e0-88fc-45e2-84d9-7c7b119cc3bf/scratchpad/check_sequences.py\")"
     ]
   }
 }
